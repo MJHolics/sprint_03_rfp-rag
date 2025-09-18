@@ -1,0 +1,77 @@
+# 환경 설정
+.env
+*.env
+
+# 데이터베이스 파일
+*.db
+*.sqlite
+*.sqlite3
+
+# 벡터 데이터베이스
+# vector_db/        <- 올릴 파일 때문에 주석 처리
+
+# 업로드된 문서들
+# files/            <- 올릴 파일 때문에 주석 처리
+# documents/
+# data/
+
+# 성능 테스트 결과
+# performance_results/  <- 올릴 파일 때문에 주석 처리
+# results/
+
+# Python
+#__pycache__/
+#*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 백업 파일들
+backup_*/
+archive_*/
+*_backup*
+#*_old*
+
+# 로그
+*.log
+
+# 임시 파일
+*.tmp
+*.temp
