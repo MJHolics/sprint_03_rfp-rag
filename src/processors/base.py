@@ -21,6 +21,19 @@ class DocumentChunk:
             self.chunk_id = str(uuid.uuid4())
 
 @dataclass
+class TableImageChunk(DocumentChunk):
+    """표 이미지를 포함한 문서 청크"""
+    table_html: str = ""
+    image_data: Optional[bytes] = None
+    gpt_description: str = ""
+    
+    def __post_init__(self):
+        super().__post_init__()
+        # metadata에 chunk 타입 표시
+        if 'chunk_type' not in self.metadata:
+            self.metadata['chunk_type'] = 'table_image'
+
+@dataclass
 class ProcessingResult:
     """문서 처리 결과"""
     success: bool
