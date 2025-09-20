@@ -402,61 +402,78 @@ class HWPProcessor(DocumentProcessor):
         return html_template.format(table_html=str(table_soup))
 
     def _screenshot_table_html(self, html_content: str) -> bytes:
-        """Selenium으로 표 HTML 스크린샷"""
+        """Selenium으로 표 HTML 전체 스크린샷"""
         try:
             import tempfile
             import os
-            
-            # Chrome 옵션 설정
+            import io
+            from PIL import Image
+
+            # Chrome 옵션
             options = webdriver.ChromeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--window-size=1200,800')
-            
-            # 드라이버 초기화
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=options)
-            
+
             try:
                 # HTML을 임시 파일로 저장
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
                     f.write(html_content)
                     temp_html_path = f.name
-                
-                # 페이지 로드
+
                 driver.get(f"file://{temp_html_path}")
-                
-                # 표 요소 찾기 및 스크린샷
+
+                # 표 요소 대기
                 table_element = WebDriverWait(driver, 10).until(
                     expected_conditions.presence_of_element_located((By.TAG_NAME, "table"))
                 )
-                
+
+                # 표 크기 계산
+                table_rect = table_element.rect
+                table_width = int(table_rect["width"])
+                table_height = int(table_rect["height"])
+
+                # 윈도우 크기를 표 전체 크기에 맞춤 (너비 제한)
+                max_width = 1500
+                driver.set_window_size(min(table_width + 50, max_width), table_height + 200)
+
+                # 표 스크롤 맞추기
+                driver.execute_script("arguments[0].scrollIntoView();", table_element)
+
                 # 표 영역 스크린샷
                 screenshot = table_element.screenshot_as_png
-                
-                return screenshot
-                
+
+                # 필요시 크기 조정 (가로폭 1200px 맞춤)
+                img = Image.open(io.BytesIO(screenshot))
+                if img.width > 1200:
+                    scale = 1200 / img.width
+                    new_size = (1200, int(img.height * scale))
+                    img = img.resize(new_size, Image.LANCZOS)
+
+                img_bytes = io.BytesIO()
+                img.save(img_bytes, format="PNG")
+                return img_bytes.getvalue()
+
             finally:
                 driver.quit()
-                # 임시 파일 정리
                 try:
                     os.unlink(temp_html_path)
                 except:
                     pass
-                    
+
         except Exception as e:
             print(f"스크린샷 생성 실패: {e}")
-            # 기본 이미지 반환 (빈 PNG)
             try:
-                from PIL import Image
-                import io
-                img = Image.new('RGB', (400, 200), color='white')
+                img = Image.new("RGB", (400, 200), color="white")
                 img_bytes = io.BytesIO()
-                img.save(img_bytes, format='PNG')
+                img.save(img_bytes, format="PNG")
                 return img_bytes.getvalue()
             except:
-                return b''  # 최후의 fallback
+                return b""
+
 
     def _generate_table_description_with_context(self, image_data: bytes, 
                                                preceding_text: str, 
