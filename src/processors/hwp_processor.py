@@ -363,31 +363,35 @@ class HWPProcessor(DocumentProcessor):
         <head>
             <meta charset="UTF-8">
             <style>
-                body {{ 
+                body { 
                     font-family: 'Malgun Gothic', 'Microsoft YaHei', Arial, sans-serif; 
-                    margin: 20px; 
+                    margin: 5px; 
                     background-color: white;
-                }}
-                table {{ 
+                    font-size: 11px; /* 글자 크기 더 줄임 */
+                }
+                table { 
                     border-collapse: collapse; 
-                    width: 100%; 
-                    max-width: 800px;
+                    width: auto;   
                     margin: 0 auto;
-                }}
-                th, td {{ 
+                }
+                th, td { 
                     border: 1px solid #333; 
-                    padding: 8px 12px; 
+                    padding: 2px 4px;   /* 위아래 padding 최소화 */
                     text-align: left;
-                    vertical-align: top;
+                    vertical-align: middle; /* 위쪽이 아니라 가운데 정렬 */
                     word-wrap: break-word;
-                }}
-                th {{ 
+                }
+                th { 
                     background-color: #f5f5f5; 
                     font-weight: bold; 
-                }}
-                tr:nth-child(even) {{
+                }
+                tr:nth-child(even) {
                     background-color: #fafafa;
-                }}
+                }
+                /* 셀 내부 p 태그 여백 제거 */
+                td p, th p {
+                    margin: 0;
+                }
             </style>
         </head>
         <body>
