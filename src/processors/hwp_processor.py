@@ -363,35 +363,38 @@ class HWPProcessor(DocumentProcessor):
         <head>
             <meta charset="UTF-8">
             <style>
-                body { 
+                body {{ 
                     font-family: 'Malgun Gothic', 'Microsoft YaHei', Arial, sans-serif; 
-                    margin: 5px; 
+                    margin: 10px; 
                     background-color: white;
-                    font-size: 11px; /* 글자 크기 더 줄임 */
-                }
-                table { 
+                    font-size: 16px; /* 글자 크기 증가 */
+                    line-height: 1.4; /* 줄 간격 추가 */
+                }}
+                table {{ 
                     border-collapse: collapse; 
                     width: auto;   
                     margin: 0 auto;
-                }
-                th, td { 
+                }}
+                th, td {{ 
                     border: 1px solid #333; 
-                    padding: 2px 4px;   /* 위아래 padding 최소화 */
+                    padding: 6px 10px;   /* 패딩 증가 */
                     text-align: left;
-                    vertical-align: middle; /* 위쪽이 아니라 가운데 정렬 */
+                    vertical-align: middle;
                     word-wrap: break-word;
-                }
-                th { 
+                    font-size: 15px; /* 셀 내 글자 크기 명시적 설정 */
+                    line-height: 1.3;
+                }}
+                th {{ 
                     background-color: #f5f5f5; 
                     font-weight: bold; 
-                }
-                tr:nth-child(even) {
+                }}
+                tr:nth-child(even) {{
                     background-color: #fafafa;
-                }
+                }}
                 /* 셀 내부 p 태그 여백 제거 */
-                td p, th p {
+                td p, th p {{
                     margin: 0;
-                }
+                }}
             </style>
         </head>
         <body>
@@ -414,6 +417,8 @@ class HWPProcessor(DocumentProcessor):
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--force-device-scale-factor=1.5")  # 고해상도 렌더링
+            options.add_argument("--disable-web-security")  # 로컬 파일 접근 개선
 
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=options)
@@ -436,9 +441,15 @@ class HWPProcessor(DocumentProcessor):
                 table_width = int(table_rect["width"])
                 table_height = int(table_rect["height"])
 
-                # 윈도우 크기를 표 전체 크기에 맞춤 (너비 제한)
-                max_width = 1500
-                driver.set_window_size(min(table_width + 50, max_width), table_height + 200)
+                # 최소 크기 보장 및 윈도우 크기 설정
+                min_width = 1000   # 최소 너비 보장
+                min_height = 700   # 최소 높이 보장
+                max_width = 2400   # 최대 너비 증가 (1500 → 2400)
+                
+                final_width = max(min_width, min(table_width + 100, max_width))
+                final_height = max(min_height, table_height + 300)
+                
+                driver.set_window_size(final_width, final_height)
 
                 # 표 스크롤 맞추기
                 driver.execute_script("arguments[0].scrollIntoView();", table_element)
@@ -446,11 +457,11 @@ class HWPProcessor(DocumentProcessor):
                 # 표 영역 스크린샷
                 screenshot = table_element.screenshot_as_png
 
-                # 필요시 크기 조정 (가로폭 1200px 맞춤)
+                # 필요시 크기 조정 (가로폭 1800px 맞춤으로 증가)
                 img = Image.open(io.BytesIO(screenshot))
-                if img.width > 1200:
-                    scale = 1200 / img.width
-                    new_size = (1200, int(img.height * scale))
+                if img.width > 1800:  # 1200 → 1800으로 증가
+                    scale = 1800 / img.width
+                    new_size = (1800, int(img.height * scale))
                     img = img.resize(new_size, Image.LANCZOS)
 
                 img_bytes = io.BytesIO()
@@ -467,7 +478,7 @@ class HWPProcessor(DocumentProcessor):
         except Exception as e:
             print(f"스크린샷 생성 실패: {e}")
             try:
-                img = Image.new("RGB", (400, 200), color="white")
+                img = Image.new("RGB", (800, 400), color="white")  # 기본 이미지 크기 증가
                 img_bytes = io.BytesIO()
                 img.save(img_bytes, format="PNG")
                 return img_bytes.getvalue()
