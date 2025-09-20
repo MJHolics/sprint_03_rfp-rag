@@ -488,7 +488,7 @@ class HWPProcessor(DocumentProcessor):
             
             # 새 버전 API 호출 방식
             response = client.chat.completions.create(
-                model="gpt-4-vision-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user", 
