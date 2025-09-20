@@ -11,6 +11,10 @@ from .base import DocumentProcessor, DocumentChunk, TableImageChunk
 
 class HWPProcessor(DocumentProcessor):
     """HWP 문서 처리기 (pyhwpx 사용)"""
+    
+    # 표 분할 상수
+    CROP_HEIGHT_PX = 1000   # 표 분할 높이 기준 (픽셀)
+    OVERLAP_HEIGHT = 100  # 분할 시 겹침 높이 (픽셀)
 
     def __init__(self, chunk_size: int = 1000, overlap: int = 200, 
                  extract_table_images: bool = False, xhtml_dir: Optional[str] = None):
@@ -57,8 +61,9 @@ class HWPProcessor(DocumentProcessor):
             try:
                 xhtml_path = self._find_corresponding_xhtml(file_path)
                 if xhtml_path:
-                    table_images = self._extract_table_images_from_xhtml(xhtml_path)
-                    print(f"표 이미지 {len(table_images)}개 추출 완료")
+                    # 텍스트 컨텍스트와 함께 표 이미지 추출
+                    table_images = self._extract_table_images_from_xhtml(xhtml_path, text_content)
+                    print(f"표 이미지 {len(table_images)}개 추출 완료 (대화형 GPT 분석 포함)")
                 else:
                     print(f"대응하는 XHTML 파일을 찾을 수 없습니다: {file_path}")
             except Exception as e:
@@ -262,8 +267,8 @@ class HWPProcessor(DocumentProcessor):
         
         return None
 
-    def _extract_table_images_from_xhtml(self, xhtml_path: str) -> List[Dict]:
-        """XHTML에서 표 이미지 추출 (컨텍스트 포함)"""
+    def _extract_table_images_from_xhtml(self, xhtml_path: str, document_text: str = "") -> List[Dict]:
+        """XHTML에서 표 이미지 추출 (문서 전체 맥락 기반)"""
         if not self.extract_table_images:
             return []
         
@@ -290,21 +295,25 @@ class HWPProcessor(DocumentProcessor):
                 # 2. Standalone HTML 생성
                 standalone_html = self._create_standalone_table_html(table, i)
                 
-                # 3. Selenium으로 스크린샷
-                image_data = self._screenshot_table_html(standalone_html)
+                # 3. 표 높이 체크 후 분할/단일 처리 결정
+                image_parts = self._split_table_by_pixels(standalone_html)
                 
-                # 4. GPT Vision으로 설명 생성 (컨텍스트 포함)
-                gpt_description = self._generate_table_description_with_context(
-                    image_data, preceding_text, following_text
-                )
+                # 분할 여부 확인
+                is_split = len(image_parts) > 1
                 
+                # 하나의 표 → 하나의 table_data로 처리 (GPT 설명은 나중에 일괄 생성)
                 table_data_list.append({
-                    'image_data': image_data,
-                    'gpt_description': gpt_description,
+                    'image_data': image_parts[0],  # 첫 번째 이미지 (호환성)
+                    'image_parts': image_parts,    # 모든 분할된 이미지들
+                    'gpt_description': "",         # 나중에 대화형 방식으로 생성
                     'table_html': str(table),
                     'table_index': i,
                     'preceding_context': preceding_text,
-                    'following_context': following_text
+                    'following_context': following_text,
+                    # 분할 관련 정보
+                    'is_split_table': is_split,
+                    'total_parts': len(image_parts),
+                    'overlap_height': self.OVERLAP_HEIGHT if is_split else 0
                 })
                 
                 print(f"표 {i+1}/{len(tables)} 처리 완료")
@@ -312,6 +321,28 @@ class HWPProcessor(DocumentProcessor):
             except Exception as e:
                 print(f"표 {i+1} 처리 실패: {e}")
                 continue
+        
+        # 모든 표 이미지 생성 완료 후 대화형 GPT 분석 수행
+        if table_data_list and document_text:
+            print(f"📊 {len(table_data_list)}개 표에 대한 대화형 GPT 분석 시작...")
+            try:
+                descriptions = self._generate_all_table_descriptions_conversation_style(
+                    document_text, table_data_list
+                )
+                
+                # 생성된 설명을 각 표에 할당
+                for i, description in enumerate(descriptions):
+                    if i < len(table_data_list):
+                        table_data_list[i]['gpt_description'] = description
+                        
+                print(f"✅ 대화형 GPT 분석 완료!")
+                
+            except Exception as e:
+                print(f"❌ 대화형 GPT 분석 실패: {e}")
+                # 실패 시 기본 설명으로 폴백
+                for i, table_data in enumerate(table_data_list):
+                    if not table_data.get('gpt_description'):
+                        table_data['gpt_description'] = f"표 {i+1}: 분석 실패"
         
         return table_data_list
 
@@ -404,6 +435,121 @@ class HWPProcessor(DocumentProcessor):
         """
         return html_template.format(table_html=str(table_soup))
 
+    def _split_table_by_pixels(self, html_content: str) -> List[bytes]:
+        """표를 픽셀 단위로 세로 분할하여 여러 이미지로 생성"""
+        try:
+            import tempfile
+            import os
+            import io
+            from PIL import Image
+
+            # Chrome 옵션 (기존과 동일)
+            options = webdriver.ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--force-device-scale-factor=1.5")
+            options.add_argument("--disable-web-security")
+
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+
+            try:
+                # HTML을 임시 파일로 저장
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+                    f.write(html_content)
+                    temp_html_path = f.name
+
+                driver.get(f"file://{temp_html_path}")
+
+                # 표 요소 대기
+                table_element = WebDriverWait(driver, 10).until(
+                    expected_conditions.presence_of_element_located((By.TAG_NAME, "table"))
+                )
+
+                # 표 크기 계산 (기존 로직 보존)
+                table_rect = table_element.rect
+                table_width = int(table_rect["width"])
+                table_height = int(table_rect["height"])
+
+                # 기존 너비 설정 보존
+                min_width = 1000
+                min_height = 700
+                max_width = 2400
+                
+                final_width = max(min_width, min(table_width + 100, max_width))
+                final_height = max(min_height, table_height + 300)
+                
+                driver.set_window_size(final_width, final_height)
+                driver.execute_script("arguments[0].scrollIntoView();", table_element)
+
+                # 전체 표 스크린샷 먼저 촬영
+                full_screenshot = table_element.screenshot_as_png
+                full_img = Image.open(io.BytesIO(full_screenshot))
+
+                # 기존 너비 조정 로직 보존
+                if full_img.width > 1800:
+                    scale = 1800 / full_img.width
+                    new_size = (1800, int(full_img.height * scale))
+                    full_img = full_img.resize(new_size, Image.LANCZOS)
+
+                # 분할 로직
+                image_parts = []
+                img_height = full_img.height
+                
+                # CROP_HEIGHT_PX 초과 시에만 분할
+                if img_height <= self.CROP_HEIGHT_PX:
+                    # 분할 불필요
+                    img_bytes = io.BytesIO()
+                    full_img.save(img_bytes, format="PNG")
+                    return [img_bytes.getvalue()]
+
+                # 분할 실행
+                current_y = 0
+                part_number = 0
+                
+                while current_y < img_height:
+                    part_number += 1
+                    
+                    # 마지막 부분 처리
+                    if current_y + self.CROP_HEIGHT_PX >= img_height:
+                        # 마지막 조각은 끝까지
+                        end_y = img_height
+                        start_y = max(0, end_y - self.CROP_HEIGHT_PX)
+                    else:
+                        # 일반적인 분할
+                        start_y = current_y
+                        end_y = current_y + self.CROP_HEIGHT_PX
+                    
+                    # 이미지 자르기
+                    cropped_img = full_img.crop((0, start_y, full_img.width, end_y))
+                    
+                    # PNG로 변환
+                    img_bytes = io.BytesIO()
+                    cropped_img.save(img_bytes, format="PNG")
+                    image_parts.append(img_bytes.getvalue())
+                    
+                    # 다음 시작점 (겹침 고려)
+                    current_y = end_y - self.OVERLAP_HEIGHT
+                    
+                    # 무한루프 방지
+                    if current_y >= img_height - self.OVERLAP_HEIGHT:
+                        break
+
+                return image_parts
+
+            finally:
+                driver.quit()
+                try:
+                    os.unlink(temp_html_path)
+                except:
+                    pass
+
+        except Exception as e:
+            print(f"표 분할 실패: {e}")
+            # 실패 시 기존 방식으로 폴백
+            return [self._screenshot_table_html(html_content)]
+
     def _screenshot_table_html(self, html_content: str) -> bytes:
         """Selenium으로 표 HTML 전체 스크린샷"""
         try:
@@ -486,6 +632,127 @@ class HWPProcessor(DocumentProcessor):
                 return b""
 
 
+    def _generate_all_table_descriptions_conversation_style(self, 
+                                                           document_text: str, 
+                                                           table_data_list: List[Dict]) -> List[str]:
+        """대화형 방식으로 모든 표 설명 생성"""
+        try:
+            import base64
+            from openai import OpenAI
+            
+            client = OpenAI()
+            
+            # 1. 시스템 메시지로 문서 전체 맥락 설정
+            messages = [
+                {
+                    "role": "system",
+                    "content": f"""당신은 제안서 분석 전문가입니다. 다음 제안서를 분석해주세요.
+
+**제안서 전체 내용:**
+{self._summarize_document_if_needed(document_text)}
+
+이제 이 문서의 표들을 하나씩 보여드릴 테니, 각 표에 대해 상세한 설명을 작성해주세요.
+문서 전체 맥락에서 각 표의 역할과 의미를 파악하여 설명해주세요.
+
+각 표마다 다음 형식으로 간결하게 답변해주세요:
+• 표 제목/주제: 
+• 문서에서의 역할: 
+• 주요 컬럼과 데이터: 
+• 핵심 내용: 
+• 검색 키워드: 
+• 비즈니스 의미: """
+                }
+            ]
+            
+            descriptions = []
+            
+            # 2. 각 표를 하나씩 대화로 처리
+            for i, table_data in enumerate(table_data_list):
+                try:
+                    print(f"  📊 표 {i+1}/{len(table_data_list)} GPT 분석 중...")
+                    
+                    # 현재 표에 대한 질문 추가
+                    user_message = {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"표 {i+1}/{len(table_data_list)}를 분석해주세요."
+                            }
+                        ]
+                    }
+                    
+                    # 분할된 표인 경우 모든 이미지 추가, 아니면 단일 이미지
+                    image_parts = table_data.get('image_parts', [])
+                    for img_data in image_parts:
+                        user_message["content"].append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64.b64encode(img_data).decode()}"
+                            }
+                        })
+                    
+                    messages.append(user_message)
+                    
+                    # 3. GPT 응답 받기
+                    response = client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=messages,
+                        max_tokens=800,
+                        temperature=0.3
+                    )
+                    
+                    description = response.choices[0].message.content.strip()
+                    descriptions.append(description)
+                    
+                    # 4. GPT 응답을 대화 기록에 추가 (맥락 누적)
+                    messages.append({
+                        "role": "assistant", 
+                        "content": description
+                    })
+                    
+                    print(f"    ✅ 표 {i+1} 분석 완료 ({len(description)}자)")
+                    
+                except Exception as e:
+                    print(f"    ❌ 표 {i+1} 분석 실패: {e}")
+                    descriptions.append(f"표 {i+1}: 분석 실패 - {str(e)}")
+            
+            return descriptions
+            
+        except Exception as e:
+            print(f"대화형 GPT 분석 전체 실패: {e}")
+            return [f"표 {i+1}: 전체 분석 실패" for i in range(len(table_data_list))]
+
+    def _summarize_document_if_needed(self, document_text: str) -> str:
+        """문서가 너무 길면 핵심 내용만 요약"""
+        if len(document_text) > 30000:  # 약 20K 토큰
+            print("  📄 문서가 길어서 핵심 내용만 요약 중...")
+            lines = document_text.split('\n')
+            important_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                if len(line) < 10:  # 너무 짧은 라인 제외
+                    continue
+                    
+                # 제목이나 중요한 키워드가 포함된 라인만 선택
+                if any(keyword in line for keyword in [
+                    '제안', '목적', '개요', '요약', '결론', '사업', '프로젝트', 
+                    '배경', '필요성', '목표', '범위', '내용', '방법', '계획',
+                    '예산', '일정', '팀', '조직', '기대효과', '성과'
+                ]):
+                    important_lines.append(line)
+                    
+                # 최대 150줄로 제한
+                if len(important_lines) >= 150:
+                    break
+            
+            summary = '\n'.join(important_lines)
+            print(f"    📄 요약 완료: {len(document_text):,}자 → {len(summary):,}자")
+            return summary
+        
+        return document_text
+
     def _generate_table_description_with_context(self, image_data: bytes, 
                                                preceding_text: str, 
                                                following_text: str) -> str:
@@ -563,7 +830,11 @@ class HWPProcessor(DocumentProcessor):
                     "has_image": True,
                     "extraction_method": "gpt_vision_with_context",
                     "preceding_context": table_data.get("preceding_context", ""),
-                    "following_context": table_data.get("following_context", "")
+                    "following_context": table_data.get("following_context", ""),
+                    # 분할 관련 메타데이터
+                    "is_split_table": table_data.get("is_split_table", False),
+                    "total_parts": table_data.get("total_parts", 1),
+                    "overlap_height": table_data.get("overlap_height", 0)
                 }
                 
                 chunk = TableImageChunk(
@@ -576,7 +847,13 @@ class HWPProcessor(DocumentProcessor):
                     # 표 특화 필드들
                     table_html=table_data.get('table_html', ''),
                     image_data=table_data.get('image_data', b''),
-                    gpt_description=table_data.get('gpt_description', '')
+                    gpt_description=table_data.get('gpt_description', ''),
+                    
+                    # 분할 관련 필드들
+                    image_parts=table_data.get('image_parts'),
+                    is_split_table=table_data.get('is_split_table', False),
+                    total_parts=table_data.get('total_parts', 1),
+                    overlap_height=table_data.get('overlap_height', 0)
                 )
                 
                 chunks.append(chunk)

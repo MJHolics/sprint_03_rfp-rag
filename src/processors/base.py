@@ -26,12 +26,21 @@ class TableImageChunk(DocumentChunk):
     table_html: str = ""
     image_data: Optional[bytes] = None
     gpt_description: str = ""
+    # 표 분할 지원 필드들
+    image_parts: Optional[List[bytes]] = None  # 분할된 이미지들
+    is_split_table: bool = False              # 분할된 표 여부
+    total_parts: int = 1                      # 전체 분할 수
+    overlap_height: int = 0                   # 겹침 높이 (픽셀)
     
     def __post_init__(self):
         super().__post_init__()
         # metadata에 chunk 타입 표시
         if 'chunk_type' not in self.metadata:
             self.metadata['chunk_type'] = 'table_image'
+        
+        # 분할 표인 경우 image_parts가 있어야 함
+        if self.is_split_table and self.image_parts is None:
+            self.image_parts = []
 
 @dataclass
 class ProcessingResult:
