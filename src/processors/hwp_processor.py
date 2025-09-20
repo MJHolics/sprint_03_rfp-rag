@@ -632,6 +632,36 @@ class HWPProcessor(DocumentProcessor):
                 return b""
 
 
+    def _summarize_document_if_needed(self, document_text: str) -> str:
+        """문서가 너무 길면 핵심 내용만 요약"""
+        if len(document_text) > 30000:  # 약 20K 토큰
+            print("  📄 문서가 길어서 핵심 내용만 요약 중...")
+            lines = document_text.split('\n')
+            important_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                if len(line) < 10:  # 너무 짧은 라인 제외
+                    continue
+                    
+                # 제목이나 중요한 키워드가 포함된 라인만 선택
+                if any(keyword in line for keyword in [
+                    '제안', '목적', '개요', '요약', '결론', '사업', '프로젝트', 
+                    '배경', '필요성', '목표', '범위', '내용', '방법', '계획',
+                    '예산', '일정', '팀', '조직', '기대효과', '성과'
+                ]):
+                    important_lines.append(line)
+                    
+                # 최대 150줄로 제한
+                if len(important_lines) >= 150:
+                    break
+            
+            summary = '\n'.join(important_lines)
+            print(f"    📄 요약 완료: {len(document_text):,}자 → {len(summary):,}자")
+            return summary
+        
+        return document_text
+
     def _generate_all_table_descriptions_conversation_style(self, 
                                                            document_text: str, 
                                                            table_data_list: List[Dict]) -> List[str]:
@@ -722,36 +752,6 @@ class HWPProcessor(DocumentProcessor):
         except Exception as e:
             print(f"대화형 GPT 분석 전체 실패: {e}")
             return [f"표 {i+1}: 전체 분석 실패" for i in range(len(table_data_list))]
-
-    def _summarize_document_if_needed(self, document_text: str) -> str:
-        """문서가 너무 길면 핵심 내용만 요약"""
-        if len(document_text) > 30000:  # 약 20K 토큰
-            print("  📄 문서가 길어서 핵심 내용만 요약 중...")
-            lines = document_text.split('\n')
-            important_lines = []
-            
-            for line in lines:
-                line = line.strip()
-                if len(line) < 10:  # 너무 짧은 라인 제외
-                    continue
-                    
-                # 제목이나 중요한 키워드가 포함된 라인만 선택
-                if any(keyword in line for keyword in [
-                    '제안', '목적', '개요', '요약', '결론', '사업', '프로젝트', 
-                    '배경', '필요성', '목표', '범위', '내용', '방법', '계획',
-                    '예산', '일정', '팀', '조직', '기대효과', '성과'
-                ]):
-                    important_lines.append(line)
-                    
-                # 최대 150줄로 제한
-                if len(important_lines) >= 150:
-                    break
-            
-            summary = '\n'.join(important_lines)
-            print(f"    📄 요약 완료: {len(document_text):,}자 → {len(summary):,}자")
-            return summary
-        
-        return document_text
 
     def _generate_table_description_with_context(self, image_data: bytes, 
                                                preceding_text: str, 
