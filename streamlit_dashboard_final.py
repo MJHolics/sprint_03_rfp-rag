@@ -17,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.rag_system import RAGSystem
 from config.settings import *
 
+# 메인 DB 사용 설정 (데이터가 있는 DB)
+ENHANCED_DB_PATH = "rfp_metadata.db"
+
 # 페이지 설정 - 개성있는 설정
 st.set_page_config(
     page_title="2팀",
@@ -141,7 +144,7 @@ st.markdown("""
 def init_rag_system():
     return RAGSystem(
         vector_db_path=str(VECTOR_DB_PATH),
-        metadata_db_path=str(METADATA_DB_PATH),
+        metadata_db_path=str(ENHANCED_DB_PATH),  # 향상된 DB 사용
         chunk_size=CHUNK_SIZE,
         overlap=CHUNK_OVERLAP
     )
@@ -206,27 +209,35 @@ def show_dashboard_overview(rag_system):
 
     # 발주기관 분포 (더 세련된 차트)
     if 'top_agencies' in stats['metadata_store'] and stats['metadata_store']['top_agencies']:
-        st.markdown("### 주요 발주기관 분포")
+        st.markdown("### 전체 발주기관 분포")
 
         agencies_data = stats['metadata_store']['top_agencies']
-        top_10 = dict(list(agencies_data.items())[:10])
+        # 모든 발주기관 표시 (상위 20개로 제한)
+        top_agencies = dict(list(agencies_data.items())[:20])
 
         # 도넛 차트로 변경
         fig = go.Figure(data=[go.Pie(
-            labels=list(top_10.keys()),
-            values=list(top_10.values()),
+            labels=list(top_agencies.keys()),
+            values=list(top_agencies.values()),
             hole=0.4,
-            marker_colors=['#667eea', '#764ba2', '#3498db', '#e74c3c', '#f39c12',
-                          '#9b59b6', '#1abc9c', '#34495e', '#e67e22', '#95a5a6']
+            marker_colors=(px.colors.qualitative.Set3 + px.colors.qualitative.Pastel + px.colors.qualitative.Set1)[:len(top_agencies)]
         )])
 
         fig.update_layout(
             showlegend=True,
-            height=400,
+            height=600,  # 높이 증가
             margin=dict(t=20, b=20, l=20, r=20),
-            font=dict(size=12),
+            font=dict(size=10),  # 폰트 크기 줄임
             paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
+            plot_bgcolor='rgba(0,0,0,0)',
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=1,
+                xanchor="left",
+                x=1.02,
+                font=dict(size=9)
+            )
         )
 
         st.plotly_chart(fig, use_container_width=True)
@@ -235,43 +246,49 @@ def show_smart_search(rag_system):
     """스마트 검색 인터페이스"""
     st.markdown("### 스마트 문서 검색")
 
-    # 검색 컨테이너 (점선 제거)
-    with st.container():
-        st.markdown("""
-        <div style="background:#f8f9fa; padding:2rem; border-radius:15px; margin:1rem 0; border:2px solid #667eea;">
-        """, unsafe_allow_html=True)
+    # 검색 컨테이너
+    col1, col2, col3 = st.columns([3, 1, 1])
 
-        col1, col2, col3 = st.columns([3, 1, 1])
+    with col1:
+        query = st.text_input(
+            "질문을 입력하세요",
+            placeholder="시스템 구축 예산은 얼마인가요?",
+            key="search_query"
+        )
 
-        with col1:
-            query = st.text_input(
-                "질문을 입력하세요",
-                placeholder="예: 시스템 구축 예산은 얼마인가요?",
-                key="search_query"
-            )
+    with col2:
+        search_method = st.selectbox(
+            "검색 방식",
+            ["hybrid", "vector", "keyword"],
+            format_func=lambda x: {"hybrid": "하이브리드", "vector": "의미검색", "keyword": "키워드"}[x]
+        )
 
-        with col2:
-            search_method = st.selectbox(
-                "검색 방식",
-                ["hybrid", "vector", "keyword"],
-                format_func=lambda x: {"hybrid": "하이브리드", "vector": "의미검색", "keyword": "키워드"}[x]
-            )
+    with col3:
+        st.write("")  # 빈 공간
+        search_button = st.button("검색", type="primary", use_container_width=True)
 
-        with col3:
-            st.write("")  # 빈 공간
-            search_button = st.button("🔍 검색", type="primary", use_container_width=True)
+    # 검색 실행 (입력값이 없으면 placeholder 텍스트 사용)
+    search_query = query.strip() if query.strip() else "시스템 구축 예산은 얼마인가요?"
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    if query and search_button:
-        # 검색 실행
+    if search_button:
+        # 검색 실행 (스마트 향상 자동 적용)
         with st.spinner("문서를 검색하는 중..."):
             start_time = time.time()
-            result = rag_system.search_and_answer(
-                query,
-                search_method=search_method,
-                top_k=5
-            )
+            try:
+                # 스마트 향상된 검색 사용
+                result = rag_system.search_with_smart_enhancement(
+                    search_query,
+                    search_method=search_method,
+                    top_k=5
+                )
+            except Exception as e:
+                # 스마트 검색 실패 시 기본 검색으로 fallback
+                st.warning("스마트 검색 기능에 문제가 있어 기본 검색을 사용합니다.")
+                result = rag_system.search_and_answer(
+                    search_query,
+                    search_method=search_method,
+                    top_k=5
+                )
             response_time = time.time() - start_time
 
         # 결과 표시
@@ -330,8 +347,8 @@ def show_smart_search(rag_system):
                     """, unsafe_allow_html=True)
 
 def show_analytics_lab(rag_system):
-    """분석 실험실"""
-    st.markdown("### 성능 분석 실험실")
+    """벡터 성능 분석"""
+    st.markdown("### 벡터 성능 분석")
 
     # 테스트 쿼리들
     test_scenarios = {
@@ -491,22 +508,27 @@ def show_system_monitor(rag_system):
         st.markdown("""
         <div class="metric-card">
             <h4>벡터 데이터베이스</h4>
-            <p><strong>컬렉션명:</strong> rfp_documents</p>
+            <p><strong>컬렉션명:</strong> {}</p>
             <p><strong>저장된 벡터:</strong> {:,}개</p>
-            <p><strong>임베딩 모델:</strong> text-embedding-3-large</p>
+            <p><strong>임베딩 모델:</strong> {}</p>
         </div>
-        """.format(stats['vector_store'].get('total_documents', 0)),
+        """.format(
+            CHROMA_COLLECTION_NAME,
+            stats['vector_store'].get('total_documents', 0),
+            OPENAI_EMBEDDING_MODEL
+        ),
         unsafe_allow_html=True)
 
     with col2:
+        search_method = f"하이브리드 (벡터 {VECTOR_WEIGHT:.1f} + 키워드 {KEYWORD_WEIGHT:.1f})"
         st.markdown("""
         <div class="metric-card">
             <h4>AI 모델 정보</h4>
-            <p><strong>채팅 모델:</strong> GPT-4o</p>
-            <p><strong>검색 방식:</strong> 하이브리드 (벡터+키워드)</p>
-            <p><strong>신뢰도 임계값:</strong> 0.3</p>
+            <p><strong>채팅 모델:</strong> {}</p>
+            <p><strong>검색 방식:</strong> {}</p>
+            <p><strong>신뢰도 임계값:</strong> {}</p>
         </div>
-        """, unsafe_allow_html=True)
+        """.format(OPENAI_CHAT_MODEL, search_method, CONFIDENCE_THRESHOLD), unsafe_allow_html=True)
 
     # 실시간 상태 체크
     if st.button("실시간 상태 체크"):
@@ -522,18 +544,182 @@ def show_system_monitor(rag_system):
         with col3:
             st.success("메타데이터 DB 정상")
 
+def show_smart_query_analysis(rag_system):
+    """스마트 쿼리 분석 기능 검증"""
+    st.markdown("# 스마트 쿼리 분석")
+    st.markdown("쿼리 향상 기능이 올바르게 작동하는지 확인할 수 있습니다.")
+
+    # 테스트 쿼리 입력
+    st.markdown("### 쿼리 분석 테스트")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        test_query = st.text_input(
+            "테스트 쿼리를 입력하세요",
+            value=st.session_state.get('test_query', '돈이 얼마나 들어가나요?'),
+            placeholder="예: 돈이 얼마나 들어가나요?",
+            help="어휘력이 낮거나 구어체로 입력해보세요"
+        )
+
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        analyze_btn = st.button("분석 실행", type="primary")
+
+    # 입력값이 없으면 기본값 사용
+    analysis_query = test_query.strip() if test_query.strip() else "돈이 얼마나 들어가나요?"
+
+    if analyze_btn:
+        with st.spinner("쿼리 분석 중..."):
+            # 스마트 쿼리 시스템에서 직접 분석
+            try:
+                from src.query_enhancement.smart_query_system import SmartQuerySystem
+                smart_query = SmartQuerySystem()
+                enhancement = smart_query.enhance_user_query(analysis_query)
+
+                # 간단한 비교 카드
+                st.markdown("### 쿼리 변환 결과")
+
+                col1, col2, col3 = st.columns([2, 1, 2])
+
+                with col1:
+                    st.info(f"**입력:** {analysis_query}")
+
+                with col2:
+                    st.markdown("<div style='text-align: center; padding: 20px;'>→</div>", unsafe_allow_html=True)
+
+                with col3:
+                    enhanced_query = enhancement['enhanced_query']
+                    if enhanced_query != analysis_query:
+                        st.success(f"**향상됨:** {enhanced_query}")
+                    else:
+                        st.success(f"**그대로:** {enhanced_query}")
+
+                # 핵심 개선사항만 표시
+                improvement = enhancement.get('confidence_improvement', 0)
+                expanded_terms = enhancement.get('expanded_terms', [])
+
+                if improvement > 0 or expanded_terms:
+                    st.markdown("### 주요 개선사항")
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        if expanded_terms:
+                            st.markdown("**추가된 관련 용어:**")
+                            for term in expanded_terms[:3]:  # 최대 3개만 표시
+                                st.write(f"- {term}")
+
+                    with col2:
+                        if improvement > 0:
+                            st.metric("검색 정확도 향상", f"+{improvement:.1f}점")
+
+                # 대안 질문 간소화
+                alternatives = enhancement.get('suggested_alternatives', [])
+                if alternatives:
+                    st.markdown("### 이런 질문도 가능해요")
+                    for alt in alternatives[:2]:  # 최대 2개만 표시
+                        st.write(f"- {alt}")
+
+                # 실제 검색 테스트
+                st.markdown("### 실제 검색 성능 테스트")
+
+                with st.spinner("검색 중..."):
+                    # 원본과 향상된 쿼리로 검색
+                    original_result = rag_system.search_and_answer(analysis_query, "hybrid", top_k=3)
+                    enhanced_result = rag_system.search_and_answer(enhancement['enhanced_query'], "hybrid", top_k=3)
+
+                # 간단한 성능 비교
+                confidence_diff = enhanced_result['confidence'] - original_result['confidence']
+                sources_diff = len(enhanced_result.get('sources', [])) - len(original_result.get('sources', []))
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.metric(
+                        "신뢰도",
+                        f"{enhanced_result['confidence']:.1%}",
+                        delta=f"{confidence_diff:+.1%}" if confidence_diff != 0 else None
+                    )
+
+                with col2:
+                    st.metric(
+                        "찾은 문서 수",
+                        len(enhanced_result.get('sources', [])),
+                        delta=f"{sources_diff:+d}" if sources_diff != 0 else None
+                    )
+
+                with col3:
+                    if confidence_diff > 0.05:
+                        st.success("검색 성능 향상!")
+                    elif confidence_diff < -0.05:
+                        st.warning("검색 성능 저하")
+                    else:
+                        st.info("검색 성능 유사")
+
+                # 최종 답변 표시
+                if enhanced_result.get('answer'):
+                    st.markdown("### 최종 검색 결과")
+                    with st.expander("답변 보기", expanded=True):
+                        st.write(enhanced_result['answer'][:300] + "..." if len(enhanced_result['answer']) > 300 else enhanced_result['answer'])
+
+            except Exception as e:
+                st.error(f"분석 중 오류 발생: {str(e)}")
+                st.info("스마트 쿼리 시스템이 올바르게 설정되지 않았을 수 있습니다.")
+
+    # 미리 정의된 테스트 케이스
+    st.markdown("### 미리 정의된 테스트 케이스")
+
+    test_cases = [
+        ("돈이 얼마나 들어가나요?", "예산 관련 질문 (초급 어휘)"),
+        ("언제까지 만들어야 하나요?", "일정 관련 질문 (구어체)"),
+        ("어떤 기술 써서 만드나요?", "기술 관련 질문 (간단한 표현)"),
+        ("보안은 어떻게 하죠?", "보안 관련 질문 (구어체)"),
+        ("시스템 구축 예산", "키워드만 입력")
+    ]
+
+    for i, (query, description) in enumerate(test_cases):
+        if st.button(f"테스트 {i+1}: {description}", key=f"test_{i}"):
+            # 버튼 클릭 시 입력란에 쿼리 설정
+            st.session_state['test_query'] = query
+            st.rerun()
+
+    # 스마트 쿼리 시스템 상태 확인
+    st.markdown("### 시스템 상태")
+
+    try:
+        from src.query_enhancement.smart_query_system import SmartQuerySystem
+        smart_query = SmartQuerySystem()
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.success("스마트 쿼리 시스템: 정상")
+
+        with col2:
+            thesaurus_size = len(smart_query.domain_thesaurus)
+            st.info(f"도메인 시소러스: {thesaurus_size}개 항목")
+
+        with col3:
+            vocab_levels = len(smart_query.vocabulary_levels)
+            st.info(f"어휘 수준: {vocab_levels}개 레벨")
+
+    except ImportError:
+        st.error("스마트 쿼리 시스템을 불러올 수 없습니다")
+    except Exception as e:
+        st.warning(f"시스템 상태 확인 중 오류: {str(e)}")
+
 def main():
     """메인 애플리케이션"""
 
     # 헤더 표시
     show_custom_header()
 
-    # 사이드바 네비게이션
-    st.sidebar.markdown("### 네비게이션")
+    # 사이드바
+    st.sidebar.markdown("### 목차")
 
     page = st.sidebar.radio(
         "페이지 선택",
-        ["대시보드", "스마트 검색", "분석 실험실", "시스템 모니터"]
+        ["대시보드", "스마트 검색", "스마트 쿼리 분석", "벡터 성능 분석", "시스템 모니터"]
     )
 
     # RAG 시스템 초기화
@@ -545,7 +731,9 @@ def main():
             show_dashboard_overview(rag_system)
         elif page == "스마트 검색":
             show_smart_search(rag_system)
-        elif page == "분석 실험실":
+        elif page == "스마트 쿼리 분석":
+            show_smart_query_analysis(rag_system)
+        elif page == "벡터 성능 분석":
             show_analytics_lab(rag_system)
         elif page == "시스템 모니터":
             show_system_monitor(rag_system)

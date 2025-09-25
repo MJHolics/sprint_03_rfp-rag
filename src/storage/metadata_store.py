@@ -215,6 +215,58 @@ class MetadataStore:
         conn.close()
         return results
 
+    def get_all_chunks(self) -> List[Dict[str, Any]]:
+        """모든 청크 조회 (BM25 인덱스 구축용) - 벡터 스토어에서 전체 컨텐츠 가져오기"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT c.chunk_id, c.document_id, c.chunk_index,
+                   c.content_preview, c.metadata_json as chunk_metadata,
+                   d.metadata_json as document_metadata
+            FROM chunks c
+            LEFT JOIN documents d ON c.document_id = d.id
+            ORDER BY c.document_id, c.chunk_index
+        ''')
+
+        columns = [description[0] for description in cursor.description]
+        results = []
+
+        for row in cursor.fetchall():
+            row_dict = dict(zip(columns, row))
+
+            # metadata_json 파싱
+            try:
+                if row_dict.get('chunk_metadata'):
+                    metadata = json.loads(row_dict['chunk_metadata'])
+                elif row_dict.get('document_metadata'):
+                    metadata = json.loads(row_dict['document_metadata'])
+                else:
+                    metadata = {}
+                row_dict['metadata'] = metadata
+            except:
+                row_dict['metadata'] = {}
+
+            # content_preview를 content로 매핑 (임시 처리)
+            # 나중에 벡터 스토어에서 전체 컨텐츠를 가져오도록 개선할 수 있음
+            row_dict['content'] = row_dict.get('content_preview', '')
+
+            results.append(row_dict)
+
+        conn.close()
+        return results
+
+    def document_exists(self, document_id: str) -> bool:
+        """문서 ID로 문서 존재 여부 확인"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT 1 FROM documents WHERE id = ? LIMIT 1', (document_id,))
+        exists = cursor.fetchone() is not None
+
+        conn.close()
+        return exists
+
     def get_statistics(self) -> Dict[str, Any]:
         """저장소 통계 정보"""
         conn = sqlite3.connect(self.db_path)
@@ -244,7 +296,7 @@ class MetadataStore:
             WHERE agency IS NOT NULL AND agency != ''
             GROUP BY agency
             ORDER BY count DESC
-            LIMIT 10
+            LIMIT 20
         ''')
         stats['top_agencies'] = dict(cursor.fetchall())
 
@@ -353,3 +405,73 @@ class MetadataStore:
         except Exception as e:
             print(f"데이터베이스 백업 오류: {e}")
             return False
+
+    def get_sample_chunks(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """청크 샘플링 (추천 질문 생성용)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                SELECT chunk_id, document_id, content, metadata_json
+                FROM chunks
+                ORDER BY RANDOM()
+                LIMIT ?
+            ''', (limit,))
+
+            results = cursor.fetchall()
+            conn.close()
+
+            chunks = []
+            for row in results:
+                try:
+                    metadata = json.loads(row[3]) if row[3] else {}
+                except:
+                    metadata = {}
+
+                chunks.append({
+                    'chunk_id': row[0],
+                    'document_id': row[1],
+                    'content': row[2],
+                    'metadata': metadata
+                })
+
+            return chunks
+
+        except Exception as e:
+            print(f"청크 샘플링 오류: {e}")
+            return []
+
+    def get_search_history(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """검색 기록 조회"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                SELECT query, search_method, results_count, confidence_score,
+                       response_time, search_date
+                FROM search_logs
+                ORDER BY search_date DESC
+                LIMIT ?
+            ''', (limit,))
+
+            results = cursor.fetchall()
+            conn.close()
+
+            logs = []
+            for row in results:
+                logs.append({
+                    'query': row[0],
+                    'search_method': row[1],
+                    'results_count': row[2],
+                    'confidence': row[3] or 0.0,
+                    'response_time': row[4] or 0.0,
+                    'search_date': row[5]
+                })
+
+            return logs
+
+        except Exception as e:
+            print(f"검색 기록 조회 오류: {e}")
+            return []

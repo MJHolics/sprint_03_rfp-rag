@@ -37,7 +37,7 @@ class VectorStore:
                     # OpenAI 임베딩 사용 시 기존 컬렉션 확인
                     try:
                         # 테스트용 더미 데이터로 차원 확인
-                        test_embedding = [0.0] * 1536  # OpenAI 임베딩 차원
+                        test_embedding = [0.0] * 1536  # OpenAI text-embedding-3-small 차원
                         self.collection.add(
                             embeddings=[test_embedding],
                             documents=["test"],
@@ -144,11 +144,16 @@ class VectorStore:
             search_results = []
             if results['documents'] and results['documents'][0]:
                 for i in range(len(results['documents'][0])):
+                    distance = results['distances'][0][i] if 'distances' in results else 0.0
+                    # 거리를 유사도 점수로 변환 (코사인 거리 -> 유사도)
+                    score = 1.0 - distance if distance <= 1.0 else 0.0
+
                     search_results.append({
                         'content': results['documents'][0][i],
                         'metadata': results['metadatas'][0][i],
                         'id': results['ids'][0][i],
-                        'distance': results['distances'][0][i] if 'distances' in results else 0.0
+                        'distance': distance,
+                        'score': score
                     })
 
             return search_results
@@ -173,7 +178,7 @@ class VectorStore:
 
                 response = client.embeddings.create(
                     input=batch,
-                    model="text-embedding-ada-002"
+                    model="text-embedding-3-small"
                 )
 
                 batch_embeddings = [item.embedding for item in response.data]
@@ -200,15 +205,27 @@ class VectorStore:
     def get_collection_stats(self) -> Dict[str, Any]:
         """컬렉션 통계 정보"""
         try:
-            count = self.collection.count()
+            total_chunks = self.collection.count()
+
+            # 고유 파일 수 계산
+            unique_files = set()
+            if total_chunks > 0:
+                # 모든 메타데이터에서 파일명 추출
+                results = self.collection.get(include=['metadatas'])
+                for metadata in results['metadatas']:
+                    if metadata and 'file_name' in metadata:
+                        unique_files.add(metadata['file_name'])
+
             return {
-                'total_documents': count,
+                'total_chunks': total_chunks,
+                'total_documents': total_chunks,  # 스트림릿 호환성용
+                'unique_files': len(unique_files),
                 'collection_name': self.collection_name,
                 'persist_directory': self.persist_directory
             }
         except Exception as e:
             print(f"통계 조회 오류: {e}")
-            return {'total_documents': 0}
+            return {'total_chunks': 0, 'total_documents': 0, 'unique_files': 0}
 
     def delete_collection(self):
         """컬렉션 삭제"""

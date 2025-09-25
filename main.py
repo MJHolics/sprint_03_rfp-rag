@@ -161,9 +161,11 @@ def show_statistics(rag_system: RAGSystem):
     print("\n시스템 통계")
     stats = rag_system.get_system_stats()
 
-    print(f"   벡터 저장소: {stats['vector_store']['total_documents']}개 문서")
-    print(f"   메타데이터: {stats['metadata_store']['total_documents']}개 문서")
-    print(f"   총 청크: {stats['metadata_store']['total_chunks']}개")
+    # 벡터 저장소 통계 (실제 처리된 파일 수 표시)
+    vector_stats = stats['vector_store']
+    print(f"   처리된 파일: {vector_stats.get('unique_files', 0)}개")
+    print(f"   총 청크: {vector_stats.get('total_chunks', 0)}개")
+    print(f"   메타데이터 DB: {stats['metadata_store']['total_documents']}개 항목")
     print(f"   지원 형식: {', '.join(stats['processors'])}")
     print(f"   OpenAI: {'활성화' if stats['openai_enabled'] else '비활성화'}")
 

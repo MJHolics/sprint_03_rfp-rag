@@ -5,13 +5,15 @@ import os
 from typing import Dict, List, Any
 import fitz  # PyMuPDF
 from .base import DocumentProcessor, DocumentChunk, ProcessingResult
+from .multimodal_processor import MultimodalProcessor
 
 class PDFProcessor(DocumentProcessor):
     """PDF 문서 처리기"""
 
-    def __init__(self, chunk_size: int = 1000, overlap: int = 200):
+    def __init__(self, chunk_size: int = 1000, overlap: int = 200, enable_multimodal: bool = True):
         super().__init__(chunk_size, overlap)
         self.supported_extensions = ['.pdf']
+        self.multimodal_processor = MultimodalProcessor() if enable_multimodal else None
 
     def extract_content(self, file_path: str) -> Dict[str, Any]:
         """PDF에서 텍스트, 이미지, 메타데이터 추출"""
@@ -123,6 +125,15 @@ class PDFProcessor(DocumentProcessor):
             # 텍스트가 없는 경우 기본 메시지
             if not content["text"].strip():
                 content["text"] = f"PDF 파일 '{os.path.basename(file_path)}'에서 텍스트를 추출할 수 없습니다."
+
+            # 멀티모달 처리 (이미지 분석 및 텍스트 강화)
+            if self.multimodal_processor:
+                try:
+                    print(f"멀티모달 분석 시작: {os.path.basename(file_path)}")
+                    content = self.multimodal_processor.enhance_content_with_images(content, file_path)
+                    print(f"멀티모달 분석 완료: {content.get('total_analyzed_images', 0)}개 이미지 분석")
+                except Exception as e:
+                    print(f"멀티모달 분석 실패: {e}")
 
             return content
 

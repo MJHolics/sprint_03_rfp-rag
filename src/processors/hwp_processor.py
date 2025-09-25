@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 from .base import DocumentProcessor, DocumentChunk
+from .hwp_multimodal_processor import HWPMultimodalProcessor
 
 class HWPProcessor(DocumentProcessor):
     """HWP 문서 처리기 (pyhwpx 사용)"""
 
-    def __init__(self, chunk_size: int = 1000, overlap: int = 200):
+    def __init__(self, chunk_size: int = 1000, overlap: int = 200, enable_multimodal: bool = True):
         super().__init__(chunk_size, overlap)
         self.supported_extensions = ['.hwp']
+        self.multimodal_processor = HWPMultimodalProcessor() if enable_multimodal else None
 
     def extract_content(self, file_path: str) -> Dict[str, Any]:
         """HWP 파일에서 텍스트 추출 - 간단한 방법 사용"""
@@ -38,12 +40,21 @@ class HWPProcessor(DocumentProcessor):
             "extraction_method": "hybrid"
         })
 
-        return {
+        content = {
             "text": text_content,
             "images": [],
             "tables": [],
             "metadata": metadata
         }
+
+        # HWP 멀티모달 처리 (이미지 분석 및 텍스트 강화)
+        if self.multimodal_processor:
+            try:
+                content = self.multimodal_processor.enhance_hwp_content_with_images(content, file_path)
+            except Exception as e:
+                print(f"HWP 멀티모달 분석 실패: {e}")
+
+        return content
 
     def _extract_with_olefile(self, file_path: str) -> str:
         """olefile을 사용한 텍스트 추출"""

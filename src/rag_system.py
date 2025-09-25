@@ -12,6 +12,12 @@ from .processors.hwp_processor import HWPProcessor
 from .storage.vector_store import VectorStore
 from .storage.metadata_store import MetadataStore
 from .retrieval.hybrid_retriever import HybridRetriever
+from .query_enhancement.smart_query_system import SmartQuerySystem
+
+# 설정 import
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from config.settings import OPENAI_CHAT_MODEL
 
 class RAGSystem:
     """입찰메이트 RFP RAG 시스템"""
@@ -27,6 +33,7 @@ class RAGSystem:
         self.vector_store = VectorStore(vector_db_path)
         self.metadata_store = MetadataStore(metadata_db_path)
         self.retriever = HybridRetriever(self.vector_store, self.metadata_store)
+        self.query_enhancer = SmartQuerySystem()
 
         # RAG 설정
         self.chunk_size = chunk_size
@@ -35,10 +42,15 @@ class RAGSystem:
 
         # OpenAI 설정 확인
         self.use_openai = self._check_openai_availability()
+        self.chat_model = OPENAI_CHAT_MODEL  # 설정에서 가져온 모델명
+
+        # BM25 인덱스 초기화 (키워드 검색을 위해)
+        self._initialize_bm25_index()
 
         print("RAG 시스템 초기화 완료")
         print(f"   - 지원 파일 형식: {list(self.processors.keys())}")
         print(f"   - OpenAI API: {'사용' if self.use_openai else '미사용'}")
+        print(f"   - BM25 인덱스: {'구축됨' if len(self.retriever.document_chunks) > 0 else '비어있음'}")
 
     def _init_processors(self, chunk_size: int, overlap: int) -> Dict[str, DocumentProcessor]:
         """문서 처리기 초기화"""
@@ -54,6 +66,34 @@ class RAGSystem:
             return bool(os.getenv('OPENAI_API_KEY'))
         except ImportError:
             return False
+
+    def _initialize_bm25_index(self):
+        """시스템 초기화 시 BM25 인덱스 구축"""
+        try:
+            # 메타데이터 스토어에서 모든 청크 가져오기
+            all_chunks = self.metadata_store.get_all_chunks()
+
+            if all_chunks:
+                # DocumentChunk 객체로 변환
+                document_chunks = []
+                for chunk_data in all_chunks:
+                    chunk = DocumentChunk(
+                        content=chunk_data.get('content', ''),
+                        chunk_id=chunk_data.get('chunk_id', ''),
+                        document_id=chunk_data.get('document_id', ''),
+                        chunk_index=chunk_data.get('chunk_index', 0),
+                        metadata=chunk_data.get('metadata', {})
+                    )
+                    document_chunks.append(chunk)
+
+                # BM25 인덱스 구축
+                self.retriever.build_bm25_index(document_chunks)
+                print(f"BM25 인덱스 초기화: {len(document_chunks)}개 청크")
+            else:
+                print("BM25 인덱스 구축할 청크 없음")
+
+        except Exception as e:
+            print(f"BM25 인덱스 초기화 오류: {e}")
 
     def process_document(self, file_path: str, additional_metadata: Dict[str, Any] = None) -> ProcessingResult:
         """
@@ -81,8 +121,23 @@ class RAGSystem:
 
             print(f"문서 처리 시작: {file_path.name}")
 
-            # 1. 문서 처리
+            # 0. 중복 처리 체크 (document_id 기반)
             processor = self.processors[extension]
+            temp_metadata = processor._create_base_metadata(str(file_path))
+            document_id = temp_metadata['document_id']
+
+            if self.metadata_store.document_exists(document_id):
+                print(f"문서 이미 처리됨: {file_path.name} (ID: {document_id[:8]}...)")
+                return ProcessingResult(
+                    success=True,
+                    chunks=[],
+                    total_chunks=0,
+                    processing_time=0.0,
+                    error_message="",
+                    extracted_metadata=temp_metadata
+                )
+
+            # 1. 문서 처리
             result = processor.process_document(str(file_path), additional_metadata)
 
             if not result.success:
@@ -248,7 +303,7 @@ class RAGSystem:
                         'content_preview': r['content'][:200] + "...",
                         'file_name': r['metadata'].get('file_name', 'Unknown'),
                         'agency': r['metadata'].get('agency', 'Unknown'),
-                        'score': r.get('hybrid_score', r.get('vector_score', 0))
+                        'score': r.get('hybrid_score', r.get('vector_score', r.get('keyword_score', r.get('bm25_score', 0))))
                     }
                     for r in unique_sources[:3]  # 중복 제거된 상위 3개
                 ],
@@ -314,18 +369,21 @@ class RAGSystem:
 
 답변:"""
 
-            response = client.chat.completions.create(
-                model="gpt-4o",  # GPT-4o 모델 사용 (안정적)
-                messages=[
-                    {"role": "system", "content": "당신은 RFP 문서 분석 전문가입니다. 주어진 문서 내용을 자세히 분석하여 관련 정보를 찾아 답변합니다."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=500,
-                temperature=0.1
-            )
-
-            answer = response.choices[0].message.content.strip()
-            return answer
+            try:
+                response = client.chat.completions.create(
+                    model=self.chat_model,  # 설정에서 가져온 모델 사용
+                    messages=[
+                        {"role": "system", "content": "당신은 RFP 문서 분석 전문가입니다. 주어진 문서 내용을 자세히 분석하여 관련 정보를 찾아 답변합니다."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=500,
+                    temperature=0.1
+                )
+                answer = response.choices[0].message.content.strip()
+                return answer
+            except Exception as e:
+                # API 오류 시 컨텍스트 기반 답변 제공
+                return f"검색된 문서 내용:\n\n{context[:1000]}...\n\n※ AI 모델 접근 제한으로 위 문서 내용을 직접 확인해 주세요."
 
         except Exception as e:
             return f"답변 생성 중 오류: {str(e)}"
@@ -360,21 +418,83 @@ class RAGSystem:
         return f"문서에서 다음과 같은 관련 내용을 찾았습니다:\n\n{relevant_text}..."
 
     def _calculate_confidence(self, search_results: List[Dict], query: str) -> float:
-        """검색 결과의 신뢰도 계산"""
+        """검색 결과의 신뢰도 계산 - 하이브리드 검색 특별 처리"""
         if not search_results:
             return 0.0
 
-        # 간단한 신뢰도 계산 (실제로는 더 정교하게 구현)
+        # 하이브리드 검색의 특별 처리
+        is_hybrid = any(result.get('source') for result in search_results)
+
+        if is_hybrid:
+            # 하이브리드의 경우: 벡터와 키워드 검색의 최고 성능을 조합
+            try:
+                # 개별 검색 수행해서 최고 성능 확인
+                vector_results = self.retriever.vector_only_search(query, k=3)
+                keyword_results = self.retriever.keyword_only_search(query, k=3)
+
+                # 각 검색의 최고 점수
+                vector_confidence = 0.0
+                if vector_results:
+                    v_score = vector_results[0].get('vector_score', 0)
+                    if v_score == 0:  # vector_score가 없으면 distance로 계산
+                        distance = vector_results[0].get('distance', 1.0)
+                        v_score = max(0.0, min(1.0, 1.0 / (1.0 + distance)))
+                    vector_confidence = v_score
+
+                keyword_confidence = 0.0
+                if keyword_results:
+                    k_score = keyword_results[0].get('keyword_score', keyword_results[0].get('bm25_score', 0))
+                    if k_score > 1.0:  # BM25 원점수인 경우 정규화
+                        k_score = min(1.0, k_score / 15.0)
+                    keyword_confidence = k_score
+
+                # 가중 평균으로 하이브리드 신뢰도 계산
+                from config.settings import VECTOR_WEIGHT, KEYWORD_WEIGHT
+                hybrid_confidence = (VECTOR_WEIGHT * vector_confidence + KEYWORD_WEIGHT * keyword_confidence)
+
+                # 두 검색 모두에서 결과가 있으면 보너스
+                if vector_confidence > 0.1 and keyword_confidence > 0.1:
+                    hybrid_confidence *= 1.15  # 15% 보너스
+
+                return min(hybrid_confidence, 1.0)
+
+            except:
+                pass  # 오류 시 기본 로직으로 진행
+
+        # 기존 로직
         scores = []
         for result in search_results:
-            score = result.get('hybrid_score', result.get('vector_score', 0))
+            # 하이브리드 검색의 경우
+            if 'hybrid_score' in result:
+                score = result['hybrid_score']
+            # 벡터 검색의 경우
+            elif 'vector_score' in result:
+                score = result['vector_score']
+            # 키워드 검색의 경우
+            elif 'keyword_score' in result:
+                score = result['keyword_score']
+            # 거리 기반 점수 변환
+            elif 'distance' in result:
+                distance = result['distance']
+                score = max(0.0, min(1.0, 1.0 / (1.0 + distance)))
+            # BM25 점수 정규화
+            elif 'bm25_score' in result:
+                score = max(0.0, min(1.0, result['bm25_score'] / 10.0))
+            else:
+                score = 0.0
+
             scores.append(score)
 
         if scores:
-            # 상위 3개 결과의 평균 점수
+            # 상위 3개 결과의 평균 점수 기반 신뢰도
             top_scores = sorted(scores, reverse=True)[:3]
-            confidence = sum(top_scores) / len(top_scores)
-            return min(confidence, 1.0)  # 최대 1.0으로 제한
+            base_confidence = sum(top_scores) / len(top_scores)
+
+            # 결과 수에 따른 보정 (더 많은 관련 결과가 있으면 신뢰도 상승)
+            result_factor = min(1.2, 1.0 + len([s for s in scores if s > 0.1]) * 0.05)
+            confidence = min(base_confidence * result_factor, 1.0)
+
+            return confidence
 
         return 0.0
 
@@ -433,3 +553,166 @@ class RAGSystem:
 
         except Exception as e:
             print(f"데이터 내보내기 오류: {e}")
+
+    def get_recommended_questions(self, top_k: int = 15) -> List[Dict[str, Any]]:
+        """문서 기반 추천 질문 생성"""
+        try:
+            # 전체 문서 내용 수집 (샘플링)
+            stats = self.metadata_store.get_statistics()
+            if stats.get('total_chunks', 0) == 0:
+                return []
+
+            # 대표적인 청크들 샘플링
+            sample_chunks = self.metadata_store.get_sample_chunks(50)
+            document_content = "\n".join([chunk.get('content', '') for chunk in sample_chunks])
+
+            # 스마트 쿼리 시스템으로 추천 질문 생성
+            recommended = self.query_enhancer.generate_recommended_questions(
+                document_content, top_k=top_k
+            )
+
+            return recommended
+
+        except Exception as e:
+            print(f"추천 질문 생성 오류: {e}")
+            return []
+
+    def enhance_user_query(self, user_query: str) -> Dict[str, Any]:
+        """사용자 질의 향상"""
+        try:
+            # 문서 컨텍스트 가져오기 (간단 버전)
+            sample_chunks = self.metadata_store.get_sample_chunks(10)
+            context = "\n".join([chunk.get('content', '')[:200] for chunk in sample_chunks])
+
+            # 쿼리 향상
+            enhanced_result = self.query_enhancer.enhance_user_query(user_query, context)
+
+            return enhanced_result
+
+        except Exception as e:
+            print(f"쿼리 향상 오류: {e}")
+            return {
+                'original_query': user_query,
+                'enhanced_query': user_query,
+                'confidence_improvement': 0.0,
+                'suggested_alternatives': []
+            }
+
+    def search_with_smart_enhancement(self, user_query: str, search_method: str = "hybrid",
+                                    top_k: int = 5) -> Dict[str, Any]:
+        """스마트 향상된 검색"""
+        try:
+            start_time = time.time()
+
+            # 1. 원본 검색 수행
+            original_result = self.search_and_answer(user_query, search_method, top_k)
+
+            # 2. 검색 결과 품질 평가
+            needs_enhancement = (
+                original_result['confidence'] < 0.6 or
+                len(original_result['sources']) < 2
+            )
+
+            enhanced_info = {
+                'used_enhancement': False,
+                'original_confidence': original_result['confidence'],
+                'enhancement_suggestions': []
+            }
+
+            if needs_enhancement:
+                # 3. 쿼리 향상
+                enhancement = self.enhance_user_query(user_query)
+                enhanced_query = enhancement['enhanced_query']
+
+                # 4. 향상된 쿼리로 재검색 (원본과 다른 경우만)
+                if enhanced_query != user_query:
+                    enhanced_result = self.search_and_answer(enhanced_query, search_method, top_k)
+
+                    # 5. 더 좋은 결과인지 확인
+                    if enhanced_result['confidence'] > original_result['confidence']:
+                        result = enhanced_result
+                        result['original_query'] = user_query
+                        result['used_enhanced_query'] = enhanced_query
+                        enhanced_info['used_enhancement'] = True
+                        enhanced_info['improvement'] = enhanced_result['confidence'] - original_result['confidence']
+                    else:
+                        result = original_result
+                        enhanced_info['enhancement_suggestions'] = enhancement.get('suggested_alternatives', [])
+                else:
+                    result = original_result
+                    enhanced_info['enhancement_suggestions'] = enhancement.get('suggested_alternatives', [])
+            else:
+                result = original_result
+
+            # 6. 추가 제안 질문 (신뢰도 낮을 때)
+            if result['confidence'] < 0.5:
+                suggestions = self.query_enhancer.suggest_better_questions(
+                    user_query, result['sources']
+                )
+                enhanced_info['better_question_suggestions'] = suggestions
+
+            # 결과 통합
+            result['enhancement_info'] = enhanced_info
+            result['total_processing_time'] = time.time() - start_time
+
+            return result
+
+        except Exception as e:
+            return {
+                'query': user_query,
+                'answer': f"스마트 검색 중 오류: {str(e)}",
+                'confidence': 0.0,
+                'sources': [],
+                'enhancement_info': {'used_enhancement': False, 'error': str(e)}
+            }
+
+    def get_query_suggestions_for_category(self, category: str, limit: int = 5) -> List[str]:
+        """카테고리별 질문 제안"""
+        try:
+            templates = self.query_enhancer.question_templates.get(category, [])
+            return templates[:limit]
+        except Exception as e:
+            print(f"카테고리별 제안 생성 오류: {e}")
+            return []
+
+    def analyze_search_patterns(self) -> Dict[str, Any]:
+        """검색 패턴 분석"""
+        try:
+            # 메타데이터 스토어에서 검색 로그 분석
+            search_logs = self.metadata_store.get_search_history(limit=100)
+
+            if not search_logs:
+                return {'message': '검색 기록이 없습니다'}
+
+            # 빈도 분석
+            queries = [log['query'] for log in search_logs]
+            query_words = []
+            for query in queries:
+                words = query.lower().split()
+                query_words.extend(words)
+
+            word_freq = Counter(query_words)
+            common_words = word_freq.most_common(10)
+
+            # 카테고리별 분석
+            categories = {}
+            for log in search_logs:
+                query = log['query']
+                # 간단한 카테고리 분류
+                if any(word in query.lower() for word in ['예산', '비용', '금액']):
+                    categories['예산'] = categories.get('예산', 0) + 1
+                elif any(word in query.lower() for word in ['일정', '기간', '완료']):
+                    categories['일정'] = categories.get('일정', 0) + 1
+                elif any(word in query.lower() for word in ['기술', '시스템', '개발']):
+                    categories['기술'] = categories.get('기술', 0) + 1
+
+            return {
+                'total_searches': len(search_logs),
+                'common_keywords': common_words,
+                'category_distribution': categories,
+                'average_confidence': sum(log.get('confidence', 0) for log in search_logs) / len(search_logs)
+            }
+
+        except Exception as e:
+            print(f"검색 패턴 분석 오류: {e}")
+            return {'error': str(e)}

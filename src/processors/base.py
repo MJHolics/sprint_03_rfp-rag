@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import uuid
+import hashlib
 from pathlib import Path
 
 @dataclass
@@ -139,8 +140,14 @@ class DocumentProcessor(ABC):
             'file_name': file_path.name,
             'file_size': file_path.stat().st_size if file_path.exists() else 0,
             'file_extension': file_path.suffix.lower(),
-            'document_id': str(uuid.uuid4())
+            'document_id': self._generate_document_id(file_path)
         }
+
+    def _generate_document_id(self, file_path: Path) -> str:
+        """파일 경로 기반으로 고유한 문서 ID 생성"""
+        # 파일의 절대 경로와 이름을 조합하여 해시 생성
+        file_key = f"{file_path.resolve()}_{file_path.name}_{file_path.suffix}"
+        return hashlib.md5(file_key.encode('utf-8')).hexdigest()
 
     def _smart_chunk_text(self, text: str, metadata: Dict[str, Any]) -> List[DocumentChunk]:
         """스마트 텍스트 청킹 (구조 인식)"""
