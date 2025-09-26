@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Read(//c/Users/apple/Desktop/**)",
+      "Bash(robocopy:*)",
+      "Bash(xcopy:*)",
+      "Bash(tar:*)",
+      "Bash(powershell:*)",
+      "Bash(dir:*)",
+      "Bash(sqlite3:*)",
+      "Bash(copy rfp_metadata.db rfp_metadata_backup_before_enhanced.db)",
+      "Bash(streamlit run:*)",
+      "Bash(rm:*)",
+      "Read(//c/**)",
+      "Bash(pip install:*)",
+      "Bash(timeout:*)",
+      "Bash(git add:*)",
+      "Bash(git log:*)",
+      "Bash(xargs ls:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
