@@ -5,6 +5,8 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from .processors.base import DocumentProcessor, DocumentChunk, ProcessingResult
 from .processors.pdf_processor import PDFProcessor
@@ -209,30 +211,71 @@ class RAGSystem:
         results['total_files'] = len(supported_files)
         print(f"처리할 파일: {results['total_files']}개")
 
-        # 파일별 처리
-        for file_path in supported_files:
+        # 병렬 파일 처리 (ThreadPoolExecutor 사용)
+        max_workers = min(4, len(supported_files), os.cpu_count())
+
+        def process_single_file(file_path):
+            """단일 파일 처리 함수"""
             try:
                 # 외부 메타데이터 추가
                 additional_meta = external_metadata.get(file_path.name, {})
-
                 result = self.process_document(str(file_path), additional_meta)
 
-                if result.success:
+                return {
+                    'file_path': file_path,
+                    'success': result.success,
+                    'total_chunks': result.total_chunks if result.success else 0,
+                    'error_message': result.error_message if not result.success else None
+                }
+            except Exception as e:
+                return {
+                    'file_path': file_path,
+                    'success': False,
+                    'total_chunks': 0,
+                    'error_message': str(e)
+                }
+
+        # 병렬 처리 실행
+        if max_workers > 1 and len(supported_files) > 1:
+            print(f"병렬 처리 시작: {max_workers}개 워커로 {len(supported_files)}개 파일 처리")
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 모든 작업 제출
+                future_to_file = {
+                    executor.submit(process_single_file, file_path): file_path
+                    for file_path in supported_files
+                }
+
+                # 완료된 작업들 처리
+                for future in as_completed(future_to_file):
+                    file_result = future.result()
+
+                    if file_result['success']:
+                        results['successful'] += 1
+                        results['total_chunks'] += file_result['total_chunks']
+                        print(f"✓ {file_result['file_path'].name} - {file_result['total_chunks']}개 청크")
+                    else:
+                        results['failed'] += 1
+                        results['errors'].append({
+                            'file': file_result['file_path'].name,
+                            'error': file_result['error_message']
+                        })
+                        print(f"✗ {file_result['file_path'].name} - 오류: {file_result['error_message']}")
+        else:
+            # 단일 스레드 처리 (파일이 적거나 워커가 1개인 경우)
+            print(f"순차 처리: {len(supported_files)}개 파일")
+            for file_path in supported_files:
+                file_result = process_single_file(file_path)
+
+                if file_result['success']:
                     results['successful'] += 1
-                    results['total_chunks'] += result.total_chunks
+                    results['total_chunks'] += file_result['total_chunks']
                 else:
                     results['failed'] += 1
                     results['errors'].append({
-                        'file': file_path.name,
-                        'error': result.error_message
+                        'file': file_result['file_path'].name,
+                        'error': file_result['error_message']
                     })
-
-            except Exception as e:
-                results['failed'] += 1
-                results['errors'].append({
-                    'file': file_path.name,
-                    'error': str(e)
-                })
 
         results['processing_time'] = time.time() - start_time
 

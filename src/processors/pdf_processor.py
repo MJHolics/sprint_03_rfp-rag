@@ -10,13 +10,224 @@ from .multimodal_processor import MultimodalProcessor
 class PDFProcessor(DocumentProcessor):
     """PDF 문서 처리기"""
 
-    def __init__(self, chunk_size: int = 1000, overlap: int = 200, enable_multimodal: bool = True):
+    def __init__(self, chunk_size: int = 1000, overlap: int = 200, enable_multimodal: bool = True, streaming: bool = True):
         super().__init__(chunk_size, overlap)
         self.supported_extensions = ['.pdf']
         self.multimodal_processor = MultimodalProcessor() if enable_multimodal else None
+        self.streaming = streaming  # 스트리밍 모드 활성화
 
     def extract_content(self, file_path: str) -> Dict[str, Any]:
         """PDF에서 텍스트, 이미지, 메타데이터 추출"""
+        if self.streaming:
+            return self._extract_content_streaming(file_path)
+        else:
+            return self._extract_content_legacy(file_path)
+
+    def _extract_content_streaming(self, file_path: str) -> Dict[str, Any]:
+        """메모리 효율적인 스트리밍 방식으로 PDF 내용 추출"""
+        try:
+            # 기본 컨텐츠 구조 초기화
+            content = {
+                "text": "",
+                "images": [],
+                "tables": [],
+                "metadata": self._create_base_metadata(file_path)
+            }
+
+            # PDF 열기 (메모리 최적화를 위해 컨텍스트 매니저 사용)
+            with self._open_pdf_safely(file_path) as doc:
+                if not doc:
+                    return self._create_error_content(file_path, "PDF 파일을 열 수 없습니다")
+
+                # PDF 메타데이터 추가
+                try:
+                    pdf_metadata = doc.metadata or {}
+                    content["metadata"].update({
+                        "title": pdf_metadata.get("title", ""),
+                        "author": pdf_metadata.get("author", ""),
+                        "subject": pdf_metadata.get("subject", ""),
+                        "creator": pdf_metadata.get("creator", ""),
+                        "total_pages": len(doc)
+                    })
+                except Exception:
+                    content["metadata"]["total_pages"] = len(doc)
+
+                # 페이지별 스트리밍 처리
+                for page_num in range(len(doc)):
+                    try:
+                        # 메모리 사용량 최적화를 위해 페이지별로 처리
+                        page_content = self._process_page_streaming(doc, page_num)
+
+                        if page_content["text"].strip():
+                            content["text"] += f"\n[페이지 {page_num + 1}]\n{page_content['text']}"
+
+                        # 이미지 정보 추가
+                        content["images"].extend(page_content["images"])
+
+                        # 메모리 정리 (가비지 컬렉션 유도)
+                        if page_num % 10 == 0:  # 10페이지마다 메모리 정리
+                            import gc
+                            gc.collect()
+
+                    except Exception as e:
+                        content["text"] += f"\n[페이지 {page_num + 1}: 처리 오류 - {str(e)}]\n"
+                        continue
+
+            # 텍스트가 없는 경우 기본 메시지
+            if not content["text"].strip():
+                content["text"] = f"PDF 파일 '{os.path.basename(file_path)}'에서 텍스트를 추출할 수 없습니다."
+
+            # 멀티모달 처리 (필요시)
+            if self.multimodal_processor:
+                try:
+                    print(f"멀티모달 분석 시작: {os.path.basename(file_path)}")
+                    content = self.multimodal_processor.enhance_content_with_images(content, file_path)
+                    print(f"멀티모달 분석 완료: {content.get('total_analyzed_images', 0)}개 이미지 분석")
+                except Exception as e:
+                    print(f"멀티모달 분석 실패: {e}")
+
+            return content
+
+        except Exception as e:
+            return self._create_error_content(file_path, str(e))
+
+    def _process_page_streaming(self, doc, page_num: int) -> Dict[str, Any]:
+        """단일 페이지를 메모리 효율적으로 처리"""
+        page_content = {
+            "text": "",
+            "images": []
+        }
+
+        try:
+            # 페이지 객체 가져오기 (with 구문으로 메모리 관리)
+            page = doc[page_num]
+
+            # 텍스트 추출 (stderr 억제)
+            with self._suppress_stderr():
+                page_text = page.get_text()
+                if page_text.strip():
+                    page_content["text"] = page_text
+
+            # 이미지 정보 추출 (메모리 효율적)
+            try:
+                with self._suppress_stderr():
+                    images = page.get_images(full=True)
+                    for img_index, img in enumerate(images):
+                        if len(img) >= 4:
+                            page_content["images"].append({
+                                "page": page_num + 1,
+                                "index": img_index,
+                                "xref": img[0],
+                                "width": img[2] if len(img) > 2 else 0,
+                                "height": img[3] if len(img) > 3 else 0
+                            })
+            except Exception:
+                # 이미지 추출 오류는 무시
+                pass
+
+        except Exception:
+            # 페이지 처리 오류
+            page_content["text"] = f"페이지 {page_num + 1} 처리 오류"
+
+        return page_content
+
+    def _open_pdf_safely(self, file_path: str):
+        """PDF를 안전하게 열기 위한 컨텍스트 매니저"""
+        class PDFContextManager:
+            def __init__(self, file_path):
+                self.file_path = file_path
+                self.doc = None
+
+            def __enter__(self):
+                try:
+                    # stderr 억제하면서 PDF 열기
+                    with self._suppress_stderr():
+                        self.doc = fitz.open(self.file_path)
+                    return self.doc
+                except Exception:
+                    return None
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if self.doc:
+                    try:
+                        self.doc.close()
+                    except Exception:
+                        pass
+
+            def _suppress_stderr(self):
+                """stderr 억제를 위한 컨텍스트 매니저"""
+                class StderrSuppressor:
+                    def __enter__(self):
+                        import sys
+                        import os
+                        self.stderr_backup = sys.stderr
+                        try:
+                            if hasattr(os, 'devnull'):
+                                self.devnull = open(os.devnull, 'w')
+                                sys.stderr = self.devnull
+                            else:
+                                from io import StringIO
+                                sys.stderr = StringIO()
+                        except:
+                            pass
+                        return self
+
+                    def __exit__(self, exc_type, exc_val, exc_tb):
+                        import sys
+                        sys.stderr = self.stderr_backup
+                        if hasattr(self, 'devnull'):
+                            try:
+                                self.devnull.close()
+                            except:
+                                pass
+
+                return StderrSuppressor()
+
+        return PDFContextManager(file_path)
+
+    def _suppress_stderr(self):
+        """stderr 억제를 위한 컨텍스트 매니저"""
+        class StderrSuppressor:
+            def __enter__(self):
+                import sys
+                import os
+                self.stderr_backup = sys.stderr
+                try:
+                    if hasattr(os, 'devnull'):
+                        self.devnull = open(os.devnull, 'w')
+                        sys.stderr = self.devnull
+                    else:
+                        from io import StringIO
+                        sys.stderr = StringIO()
+                except:
+                    pass
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                import sys
+                sys.stderr = self.stderr_backup
+                if hasattr(self, 'devnull'):
+                    try:
+                        self.devnull.close()
+                    except:
+                        pass
+
+        return StderrSuppressor()
+
+    def _create_error_content(self, file_path: str, error_message: str) -> Dict[str, Any]:
+        """오류 발생 시 기본 컨텐츠 생성"""
+        return {
+            "text": f"PDF 파일 처리 실패: {error_message}",
+            "images": [],
+            "tables": [],
+            "metadata": {
+                **self._create_base_metadata(file_path),
+                "processing_error": error_message
+            }
+        }
+
+    def _extract_content_legacy(self, file_path: str) -> Dict[str, Any]:
+        """기존 방식의 PDF 내용 추출 (호환성 유지)"""
         try:
             # MuPDF 오류 억제를 위한 설정
             import warnings

@@ -19,7 +19,12 @@
       "Bash(git add:*)",
       "Bash(git log:*)",
       "Bash(xargs ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git commit:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(cp:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

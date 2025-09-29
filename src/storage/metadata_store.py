@@ -44,10 +44,17 @@ class MetadataStore:
             )
         ''')
 
-        # 인덱스 생성
+        # 기본 인덱스 생성
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_agency ON documents(agency)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_business_type ON documents(business_type)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_date ON documents(processed_date)')
+
+        # 성능 최적화 복합 인덱스 추가
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_agency_business ON documents(agency, business_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_processed_date_desc ON documents(processed_date DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_budget_range ON documents(budget) WHERE budget != ""')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_deadline_date ON documents(deadline) WHERE deadline != ""')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_name ON documents(file_name)')
 
         # 청크 정보 테이블
         cursor.execute('''
@@ -64,9 +71,12 @@ class MetadataStore:
             )
         ''')
 
-        # 청크 테이블 인덱스 생성
+        # 청크 테이블 최적화 인덱스
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_document_id ON chunks(document_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_chunk_index ON chunks(chunk_index)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_document_chunk ON chunks(document_id, chunk_index)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_preview ON chunks(content_preview) WHERE content_preview IS NOT NULL')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_chunk_size ON chunks(chunk_size)')
 
         # 검색 통계 테이블
         cursor.execute('''
@@ -127,22 +137,27 @@ class MetadataStore:
                 json.dumps(metadata, ensure_ascii=False)
             ))
 
-            # 청크 정보 저장
-            for chunk in processing_result.chunks:
-                cursor.execute('''
+            # 청크 정보 배치 저장 (성능 최적화)
+            if processing_result.chunks:
+                chunk_data = []
+                for chunk in processing_result.chunks:
+                    chunk_data.append((
+                        chunk.chunk_id,
+                        chunk.document_id,
+                        chunk.chunk_index,
+                        chunk.content[:200],  # 미리보기용 200자
+                        len(chunk.content),
+                        chunk.metadata.get('section_index', 0),
+                        json.dumps(chunk.metadata, ensure_ascii=False)
+                    ))
+
+                # 배치 INSERT 실행
+                cursor.executemany('''
                     INSERT OR REPLACE INTO chunks
                     (chunk_id, document_id, chunk_index, content_preview,
                      chunk_size, section_index, metadata_json)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    chunk.chunk_id,
-                    chunk.document_id,
-                    chunk.chunk_index,
-                    chunk.content[:200],  # 미리보기용 200자
-                    len(chunk.content),
-                    chunk.metadata.get('section_index', 0),
-                    json.dumps(chunk.metadata, ensure_ascii=False)
-                ))
+                ''', chunk_data)
 
             conn.commit()
             conn.close()
@@ -333,7 +348,7 @@ class MetadataStore:
             print(f"검색 로그 저장 오류: {e}")
 
     def import_from_csv(self, csv_path: str) -> int:
-        """CSV 파일에서 메타데이터 가져오기"""
+        """CSV 파일에서 메타데이터 가져오기 (배치 처리 최적화)"""
         try:
             df = pd.read_csv(csv_path)
             imported_count = 0
@@ -341,16 +356,15 @@ class MetadataStore:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
+            # 배치 처리를 위한 데이터 준비
+            batch_data = []
+
             for _, row in df.iterrows():
                 try:
                     # CSV 컬럼명을 데이터베이스 컬럼에 매핑
                     file_name = row.get('파일명', row.get('file_name', ''))
 
-                    cursor.execute('''
-                        INSERT OR IGNORE INTO documents
-                        (id, file_path, file_name, agency, business_name, budget, deadline, business_type)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
+                    batch_data.append((
                         file_name,  # ID로 파일명 사용
                         f"./files/{file_name}",  # 가정된 경로
                         file_name,
@@ -360,11 +374,20 @@ class MetadataStore:
                         row.get('마감일', row.get('deadline', '')),
                         row.get('사업분야', row.get('business_type', ''))
                     ))
-                    imported_count += 1
 
                 except Exception as e:
                     print(f"행 처리 오류: {e}")
                     continue
+
+            # 배치 INSERT 실행
+            if batch_data:
+                cursor.executemany('''
+                    INSERT OR IGNORE INTO documents
+                    (id, file_path, file_name, agency, business_name, budget, deadline, business_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', batch_data)
+
+                imported_count = len(batch_data)
 
             conn.commit()
             conn.close()

@@ -3,7 +3,9 @@
 """
 from typing import List, Dict, Any, Optional, Tuple
 import math
+import hashlib
 from collections import Counter
+from functools import lru_cache
 
 from ..storage.vector_store import VectorStore
 from ..storage.metadata_store import MetadataStore
@@ -86,19 +88,40 @@ class HybridRetriever:
         self.bm25 = BM25()
         self.document_chunks = []
 
+        # 캐싱 시스템 추가
+        self.query_cache = {}
+        self.cache_max_size = 100  # 최대 캐시 항목 수
+        self.cache_hits = 0
+        self.cache_misses = 0
+
     def build_bm25_index(self, chunks: List[DocumentChunk]):
         """BM25 인덱스 구축"""
         self.document_chunks = chunks
         documents = [chunk.content for chunk in chunks]
         self.bm25.fit(documents)
+        # 캐시 초기화 (인덱스가 변경되었으므로)
+        self.query_cache.clear()
         print(f"BM25 인덱스 구축 완료: {len(documents)}개 문서")
+
+    def _generate_cache_key(self, query: str, k: int, filters: Dict[str, Any] = None, search_type: str = "hybrid") -> str:
+        """캐시 키 생성"""
+        key_data = f"{search_type}_{query}_{k}_{str(filters) if filters else ''}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+
+    def _manage_cache_size(self):
+        """캐시 크기 관리 - LRU 방식"""
+        if len(self.query_cache) >= self.cache_max_size:
+            # 가장 오래된 항목 제거
+            oldest_key = min(self.query_cache.keys(),
+                           key=lambda k: self.query_cache[k]['timestamp'])
+            del self.query_cache[oldest_key]
 
     def hybrid_search(self, query: str, k: int = 10,
                      vector_weight: float = 0.7,
                      keyword_weight: float = 0.3,
                      filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        하이브리드 검색 수행
+        하이브리드 검색 수행 (캐싱 적용)
 
         Args:
             query: 검색 쿼리
@@ -107,6 +130,18 @@ class HybridRetriever:
             keyword_weight: 키워드 검색 가중치
             filters: 메타데이터 필터
         """
+        # 캐시 키 생성 및 확인
+        import time
+        cache_key = self._generate_cache_key(query, k, filters, "hybrid")
+
+        if cache_key in self.query_cache:
+            self.cache_hits += 1
+            cached_result = self.query_cache[cache_key]
+            cached_result['timestamp'] = time.time()
+            return cached_result['results']
+
+        self.cache_misses += 1
+
         try:
             # 1. Vector 검색
             vector_results = self.vector_store.similarity_search(
@@ -261,6 +296,13 @@ class HybridRetriever:
             reverse=True
         )
 
+        # 결과를 캐시에 저장
+        self._manage_cache_size()
+        self.query_cache[cache_key] = {
+            'results': sorted_results,
+            'timestamp': time.time()
+        }
+
         return sorted_results
 
     def vector_only_search(self, query: str, k: int = 5, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -394,10 +436,18 @@ class HybridRetriever:
             print(f"BM25 인덱스 재구축 오류: {e}")
 
     def get_search_stats(self) -> Dict[str, Any]:
-        """검색 통계 조회"""
-        # 여기서는 기본 통계만 반환, 실제로는 metadata_store에서 조회
+        """검색 통계 조회 (캐시 통계 포함)"""
+        cache_hit_rate = (self.cache_hits / (self.cache_hits + self.cache_misses)) * 100 if (self.cache_hits + self.cache_misses) > 0 else 0
+
         return {
             'total_indexed_chunks': len(self.document_chunks),
             'vector_store_stats': self.vector_store.get_collection_stats(),
-            'bm25_indexed': len(self.document_chunks) > 0
+            'bm25_indexed': len(self.document_chunks) > 0,
+            'cache_stats': {
+                'cache_hits': self.cache_hits,
+                'cache_misses': self.cache_misses,
+                'cache_hit_rate': f"{cache_hit_rate:.1f}%",
+                'cached_queries': len(self.query_cache),
+                'max_cache_size': self.cache_max_size
+            }
         }

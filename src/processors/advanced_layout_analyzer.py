@@ -159,12 +159,16 @@ class AdvancedLayoutAnalyzer:
         binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                      cv2.THRESH_BINARY, 11, 2)
 
-        # 2. 모폴로지 연산으로 텍스트 블록 찾기
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 3))
-        dilated = cv2.dilate(binary, kernel, iterations=2)
+        # 동료파일 해결책: 흑백 반전으로 텍스트를 흰색으로 만들어 dilate 효과 적용
+        binary_inverted = cv2.bitwise_not(binary)
 
-        # 3. 컨투어 찾기
-        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # 2. 모폴로지 연산으로 텍스트 블록 찾기 (반전된 이미지에 적용)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 3))
+        dilated = cv2.dilate(binary_inverted, kernel, iterations=2)
+
+        # 3. 컨투어 찾기를 위해 다시 반전 (흰색 배경, 검은색 텍스트)
+        dilated_for_contours = cv2.bitwise_not(dilated)
+        contours, _ = cv2.findContours(dilated_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         regions = []
         img_area = image.shape[0] * image.shape[1]
@@ -176,24 +180,26 @@ class AdvancedLayoutAnalyzer:
             if min_area < area < max_area:
                 x, y, w, h = cv2.boundingRect(contour)
 
-                # 더 엄격한 필터링
+                # 동료파일 해결책: 완화된 필터링 (가로세로 비율만 체크)
                 aspect_ratio = w / h
-                if (0.1 < aspect_ratio < 20 and  # 가로세로 비율
-                    w > 50 and h > 20 and        # 최소 크기
-                    w < image.shape[1] * 0.95 and h < image.shape[0] * 0.95):  # 최대 크기
+                if 0.1 < aspect_ratio < 100:  # 훨씬 관대한 가로세로 비율
 
-                    # 텍스트 영역인지 추가 검증
-                    roi = binary[y:y+h, x:x+w]
-                    text_pixel_ratio = np.sum(roi == 0) / (w * h)
+                    # 기본 크기 체크만 유지 (너무 작은 것 제외)
+                    if w > 20 and h > 10:  # 최소 크기만 체크
 
-                    if 0.05 < text_pixel_ratio < 0.8:  # 적당한 텍스트 밀도
-                        regions.append({
-                            'bbox': (x, y, x+w, y+h),
-                            'area': area,
-                            'aspect_ratio': aspect_ratio,
-                            'contour': contour,
-                            'text_density': text_pixel_ratio
-                        })
+                        # 텍스트 밀도 체크도 완화
+                        roi = binary[y:y+h, x:x+w]
+                        text_pixel_ratio = np.sum(roi == 0) / (w * h) if (w * h) > 0 else 0
+
+                        # 더 관대한 텍스트 밀도 허용
+                        if 0.01 < text_pixel_ratio < 0.95:
+                            regions.append({
+                                'bbox': (x, y, x+w, y+h),
+                                'area': area,
+                                'aspect_ratio': aspect_ratio,
+                                'contour': contour,
+                                'text_density': text_pixel_ratio
+                            })
 
         # 면적 순으로 정렬
         regions.sort(key=lambda x: x['area'], reverse=True)
@@ -244,14 +250,30 @@ class AdvancedLayoutAnalyzer:
             if not results:
                 return "", 0.0
 
+            # 동료파일 해결책: 적응형 신뢰도 임계값 적용
+            all_confidences = [conf for bbox, text, conf in results]
+            if all_confidences:
+                # 평균 신뢰도의 70%를 임계값으로 사용 (최소 0.3, 최대 0.7)
+                adaptive_threshold = max(0.3, min(0.7, np.mean(all_confidences) * 0.7))
+            else:
+                adaptive_threshold = 0.5
+
             # 결과 통합
             texts = []
             confidences = []
 
             for bbox, text, conf in results:
-                if conf > 0.5:  # 신뢰도 50% 이상만 사용
+                if conf > adaptive_threshold:  # 적응형 임계값 사용
                     texts.append(text.strip())
                     confidences.append(conf)
+
+            # 텍스트가 없으면 더 낮은 임계값으로 재시도
+            if not texts and all_confidences:
+                fallback_threshold = max(0.2, np.mean(all_confidences) * 0.5)
+                for bbox, text, conf in results:
+                    if conf > fallback_threshold:
+                        texts.append(text.strip())
+                        confidences.append(conf)
 
             if not texts:
                 return "", 0.0
