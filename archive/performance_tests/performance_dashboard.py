@@ -260,14 +260,14 @@ def main():
                 f"{db_performance.get('total_indexes', 0)}개",
                 "0.8+ (평균)"
             ],
-            '상태': ['✅ 양호', '✅ 양호', '⚠️ 개선 가능', '✅ 양호']
+            '상태': [' 양호', ' 양호', ' 개선 가능', ' 양호']
         }
 
         status_df = pd.DataFrame(current_status)
         st.dataframe(status_df, use_container_width=True)
 
     # 실시간 모니터링 섹션
-    st.header("⏱️ 실시간 모니터링")
+    st.header(" 실시간 모니터링")
 
     monitor_col1, monitor_col2, monitor_col3 = st.columns(3)
 
@@ -297,7 +297,7 @@ def main():
     with monitor_col3:
         st.subheader("🔄 시스템 상태")
 
-        openai_status = "✅ 활성화" if system_stats.get('openai_enabled', False) else "❌ 비활성화"
+        openai_status = " 활성화" if system_stats.get('openai_enabled', False) else " 비활성화"
         st.metric("OpenAI API", openai_status)
 
         processors = system_stats.get('processors', [])

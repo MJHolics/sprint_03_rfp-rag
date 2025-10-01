@@ -26,7 +26,7 @@ def test_document_processing(rag_system, test_files_path="./files"):
     print("=" * 60)
 
     if not Path(test_files_path).exists():
-        print(f"❌ 테스트 파일 경로가 존재하지 않습니다: {test_files_path}")
+        print(f" 테스트 파일 경로가 존재하지 않습니다: {test_files_path}")
         return
 
     # 메모리 사용량 측정 시작
@@ -50,19 +50,19 @@ def test_document_processing(rag_system, test_files_path="./files"):
 
         # 처리 결과
         print(f"📁 총 파일 수: {results['total_files']}")
-        print(f"✅ 성공: {results['successful']}")
-        print(f"❌ 실패: {results['failed']}")
+        print(f" 성공: {results['successful']}")
+        print(f" 실패: {results['failed']}")
         print(f"📄 총 청크: {results['total_chunks']}")
 
         # 성능 지표
-        print(f"\n⏱️ 처리 시간: {processing_time:.1f}초")
+        print(f"\n 처리 시간: {processing_time:.1f}초")
         print(f"💾 메모리 사용량: {final_memory:.1f} MB (+{memory_delta:.1f} MB)")
 
         if results['total_files'] > 0:
             files_per_minute = (results['successful'] / processing_time) * 60
             chunks_per_second = results['total_chunks'] / processing_time
             print(f"🚀 처리 속도: {files_per_minute:.1f} 파일/분")
-            print(f"⚡ 청킹 속도: {chunks_per_second:.1f} 청크/초")
+            print(f" 청킹 속도: {chunks_per_second:.1f} 청크/초")
 
         # 예상 개선 효과
         print(f"\n🎯 2단계 개선 효과:")
@@ -72,12 +72,12 @@ def test_document_processing(rag_system, test_files_path="./files"):
 
         # 오류 정보
         if results['errors']:
-            print(f"\n⚠️ 오류 목록 (최대 3개):")
+            print(f"\n 오류 목록 (최대 3개):")
             for error in results['errors'][:3]:
                 print(f"   • {error['file']}: {error['error']}")
 
     except Exception as e:
-        print(f"❌ 테스트 실패: {e}")
+        print(f" 테스트 실패: {e}")
 
 def test_search_performance(rag_system):
     """검색 성능 테스트"""
@@ -116,7 +116,7 @@ def test_search_performance(rag_system):
         avg_time = total_time / successful_searches
         avg_confidence = total_confidence / successful_searches
         print(f"\n📊 검색 성능 평균:")
-        print(f"   ⏱️ 평균 응답 시간: {avg_time:.2f}초")
+        print(f"    평균 응답 시간: {avg_time:.2f}초")
         print(f"   🎯 평균 신뢰도: {avg_confidence:.3f}")
         print(f"   🚀 예상 개선: 3-5배 빠른 검색")
 
@@ -149,11 +149,11 @@ def main():
             print("\n💡 검색 테스트를 위해 먼저 문서를 처리해주세요.")
 
         print("\n" + "=" * 60)
-        print("✅ 2단계 성능 테스트 완료!")
+        print(" 2단계 성능 테스트 완료!")
         print("=" * 60)
 
     except Exception as e:
-        print(f"❌ 테스트 실행 오류: {e}")
+        print(f" 테스트 실행 오류: {e}")
 
 if __name__ == "__main__":
     main()

@@ -115,7 +115,7 @@ class PerformanceBenchmark:
             }
 
             if not test_files:
-                print("⚠️ 테스트 파일이 없습니다.")
+                print(" 테스트 파일이 없습니다.")
                 return results
 
             # 개별 파일 처리
@@ -150,7 +150,7 @@ class PerformanceBenchmark:
             print(f"   성공: {results['successful']}")
             print(f"   실패: {results['failed']}")
             print(f"   총 청크: {results['total_chunks']}")
-            print(f"⏱️ 성능 지표:")
+            print(f" 성능 지표:")
             print(f"   처리 시간: {results['processing_time']:.2f}초")
             print(f"   메모리 사용: {results['memory_used']:.1f}MB")
             print(f"   처리 속도: {results['files_per_minute']:.1f} 파일/분")
@@ -271,12 +271,12 @@ class PerformanceBenchmark:
         print("="*80)
 
         # 1. 패치 전 (기본) 테스트
-        print("\n1️⃣ 패치 전 (기본) 성능 측정")
+        print("\n 패치 전 (기본) 성능 측정")
         baseline_results = self.test_document_processing("baseline")
         self.results['baseline'] = baseline_results
 
         # 2. 현재 (2단계 패치 후) 테스트
-        print("\n2️⃣ 2단계 패치 후 성능 측정")
+        print("\n 2단계 패치 후 성능 측정")
         stage2_results = self.test_document_processing("stage2")
         self.results['stage2'] = stage2_results
 
@@ -298,7 +298,7 @@ class PerformanceBenchmark:
         # 처리 속도 개선
         if baseline['processing_time'] > 0 and stage2['processing_time'] > 0:
             speed_improvement = baseline['processing_time'] / stage2['processing_time']
-            print(f"⚡ 문서 처리 속도 개선: {speed_improvement:.1f}배")
+            print(f" 문서 처리 속도 개선: {speed_improvement:.1f}배")
 
         # 메모리 사용량 비교
         if baseline['memory_used'] > 0 and stage2['memory_used'] > 0:
@@ -340,7 +340,7 @@ class PerformanceBenchmark:
 def main():
     """메인 실행"""
     if not Path("./files").exists():
-        print("❌ ./files 디렉토리가 없습니다. 테스트 파일을 준비해주세요.")
+        print(" ./files 디렉토리가 없습니다. 테스트 파일을 준비해주세요.")
         return
 
     benchmark = PerformanceBenchmark()
