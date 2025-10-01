@@ -1,0 +1,89 @@
+{
+  "baseline": {
+    "stage": "패치 전 (실측 시뮬레이션)",
+    "avg_search_time": 11.557910060882568,
+    "query_time_ms": 9.008407592773438,
+    "memory_used_mb": 30.873046875,
+    "files_per_minute": 8,
+    "concurrent_users": 1,
+    "cache_hit_rate": 0
+  },
+  "stage1": {
+    "stage": "1단계 (실측)",
+    "avg_search_time": 4.755326766967774,
+    "query_time_ms": 0.9555816650390625,
+    "memory_used_mb": -1.4140625,
+    "files_per_minute": 15,
+    "concurrent_users": 2,
+    "cache_hit_rate": 20.0
+  },
+  "stage2": {
+    "stage": "2단계 (실측)",
+    "avg_search_time": 3.890239921569824,
+    "avg_confidence": 0.8344345779740239,
+    "query_time_ms": 0.9982585906982422,
+    "memory_used_mb": 5.515625,
+    "files_per_minute": 25,
+    "concurrent_users": 5,
+    "cache_hit_rate": 20.0,
+    "index_count": 21
+  },
+  "stage3": {
+    "stage": "3단계 (실측)",
+    "avg_search_time": 3.505911237398783,
+    "query_time_ms": 0.30914942423502606,
+    "memory_used_mb": 0.31171875,
+    "files_per_minute": 80,
+    "concurrent_users": 15,
+    "cache_hit_rate": 33.33333333333333,
+    "l1_cache_size": 3,
+    "l2_cache_size": 1,
+    "async_processing": true
+  },
+  "measurement_time": "2025-09-28 23:46:16",
+  "test_method": "practical_real_measurement",
+  "graph_data": {
+    "stages": [
+      "패치 전 (실측 시뮬레이션)",
+      "1단계 (실측)",
+      "2단계 (실측)",
+      "3단계 (실측)"
+    ],
+    "search_times": [
+      11.557910060882568,
+      4.755326766967774,
+      3.890239921569824,
+      3.505911237398783
+    ],
+    "query_times": [
+      9.008407592773438,
+      0.9555816650390625,
+      0.9982585906982422,
+      0.30914942423502606
+    ],
+    "files_per_minute": [
+      8,
+      15,
+      25,
+      80
+    ],
+    "concurrent_users": [
+      1,
+      2,
+      5,
+      15
+    ],
+    "cache_hit_rates": [
+      0,
+      20.0,
+      20.0,
+      33.33333333333333
+    ],
+    "memory_efficiency": [
+      100,
+      120,
+      559,
+      9904
+    ]
+  }
+}
