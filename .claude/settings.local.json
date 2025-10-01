@@ -24,7 +24,12 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(cp:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(echo $OPENAI_API_KEY)",
+      "Bash(findstr:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []
