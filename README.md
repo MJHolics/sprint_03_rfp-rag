@@ -1,3 +1,6 @@
+# 2팀 보고서 링크
+https://www.notion.so/2-27f8c9c2de2280cd97aac802e1bad430
+
 # 개인 일정 링크
 [Codeit AI 3] _ Part3_2팀 _ 중급 프로젝트 개인 Daily_지민종	https://www.notion.so/26c8c9c2de2280d5ab53cba1a396ad4e?v=26c8c9c2de2280dcb302000ce3c78c0e
 
@@ -6,6 +9,7 @@
 [Codeit AI 3] _ Part3_2팀 _ 중급 프로젝트 개인 Daily_유영은	https://www.notion.so/daily-26c5954c5686803a8783df86df676a6e?source=copy_link
 
 [Codeit AI 3] _ Part3_2팀 _ 중급 프로젝트 개인 Daily_최우석	https://www.notion.so/270e67a1ff2380a7a010cc16d2599d11?v=270e67a1ff2380eeb88a000c6069db9c&source=copy_link
+
 
 # RFP RAG 시스템
 
