@@ -10,7 +10,7 @@ import threading
 
 from .processors.base import DocumentProcessor, DocumentChunk, ProcessingResult
 from .processors.pdf_processor import PDFProcessor
-from .processors.hwp_processor import HWPProcessor
+from .processors.enhanced_hwp_processor import EnhancedHWPProcessor as HWPProcessor
 from .storage.vector_store import VectorStore
 from .storage.metadata_store import MetadataStore
 from .retrieval.hybrid_retriever import HybridRetriever
@@ -491,13 +491,26 @@ class RAGSystem:
                         k_score = min(1.0, k_score / 15.0)
                     keyword_confidence = k_score
 
-                # 가중 평균으로 하이브리드 신뢰도 계산
+                # 하이브리드 신뢰도: 최대값 기반 + 가중 평균 보너스
                 from config.settings import VECTOR_WEIGHT, KEYWORD_WEIGHT
-                hybrid_confidence = (VECTOR_WEIGHT * vector_confidence + KEYWORD_WEIGHT * keyword_confidence)
 
-                # 두 검색 모두에서 결과가 있으면 보너스
+                # 기본 신뢰도는 두 검색 중 더 높은 값 사용
+                base_confidence = max(vector_confidence, keyword_confidence)
+
+                # 가중 평균으로 추가 신뢰도 계산
+                weighted_avg = (VECTOR_WEIGHT * vector_confidence + KEYWORD_WEIGHT * keyword_confidence)
+
+                # 두 검색 모두 좋은 결과를 내면 가중 평균 보너스 추가
+                if vector_confidence > 0.3 and keyword_confidence > 0.3:
+                    # 가중 평균이 기본값보다 높으면 사용
+                    hybrid_confidence = max(base_confidence, weighted_avg * 1.1)
+                else:
+                    # 한쪽만 좋은 경우 최대값 사용
+                    hybrid_confidence = base_confidence
+
+                # 두 검색 모두에서 결과가 있으면 추가 보너스
                 if vector_confidence > 0.1 and keyword_confidence > 0.1:
-                    hybrid_confidence *= 1.15  # 15% 보너스
+                    hybrid_confidence = min(hybrid_confidence * 1.05, 1.0)  # 5% 추가 보너스
 
                 return min(hybrid_confidence, 1.0)
 

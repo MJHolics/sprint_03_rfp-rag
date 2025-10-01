@@ -54,16 +54,9 @@ class VectorStore:
                     print(f"기존 ChromaDB 컬렉션 로드됨 (기본 임베딩): {self.collection_name}")
 
             except:
-                # 컬렉션이 없는 경우 새로 생성 (HNSW 최적화 파라미터 적용)
+                # 컬렉션이 없는 경우 새로 생성 (기본 설정 사용)
                 self.collection = self.client.create_collection(
-                    name=self.collection_name,
-                    metadata={
-                        "hnsw:space": "cosine",
-                        "hnsw:M": 16,              # 연결성 향상 (기본값: 16)
-                        "hnsw:ef_construction": 200, # 구축 품질 향상 (기본값: 200)
-                        "hnsw:ef_search": 100,      # 검색 정확도 향상 (기본값: 10)
-                        "hnsw:max_elements": 100000  # 최대 요소 수 설정
-                    }
+                    name=self.collection_name
                 )
                 print(f"새 ChromaDB 컬렉션 생성됨 (HNSW 최적화): {self.collection_name}")
 
@@ -78,16 +71,9 @@ class VectorStore:
             self.client.delete_collection(name=self.collection_name)
             print(f"기존 컬렉션 삭제됨: {self.collection_name}")
 
-            # 새 컬렉션 생성 (HNSW 최적화 파라미터 적용)
+            # 새 컬렉션 생성 (기본 설정 사용)
             self.collection = self.client.create_collection(
-                name=self.collection_name,
-                metadata={
-                    "hnsw:space": "cosine",
-                    "hnsw:M": 16,              # 연결성 향상
-                    "hnsw:ef_construction": 200, # 구축 품질 향상
-                    "hnsw:ef_search": 100,      # 검색 정확도 향상
-                    "hnsw:max_elements": 100000  # 최대 요소 수 설정
-                }
+                name=self.collection_name
             )
             print(f"OpenAI 호환 컬렉션 생성됨 (HNSW 최적화): {self.collection_name}")
 

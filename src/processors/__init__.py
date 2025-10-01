@@ -1,5 +1,8 @@
 from .base import DocumentProcessor, DocumentChunk, ProcessingResult
 from .pdf_processor import PDFProcessor
-from .hwp_processor import HWPProcessor
+from .enhanced_hwp_processor import EnhancedHWPProcessor
 
-__all__ = ['DocumentProcessor', 'DocumentChunk', 'ProcessingResult', 'PDFProcessor', 'HWPProcessor']
+# 호환성을 위한 alias
+HWPProcessor = EnhancedHWPProcessor
+
+__all__ = ['DocumentProcessor', 'DocumentChunk', 'ProcessingResult', 'PDFProcessor', 'EnhancedHWPProcessor', 'HWPProcessor']

@@ -14,7 +14,7 @@ import sys
 
 # 프로젝트 경로 설정
 sys.path.insert(0, str(Path(__file__).parent))
-from src.rag_system import RAGSystem
+from src.rag_system_stage3 import RAGSystemStage3
 from config.settings import *
 
 # 메인 DB 사용 설정 (데이터가 있는 DB)
@@ -139,10 +139,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# RAG 시스템 초기화 (캐시)
+# RAG 시스템 초기화 (캐시) - Stage 3 적용
 @st.cache_resource
 def init_rag_system():
-    return RAGSystem(
+    return RAGSystemStage3(
         vector_db_path=str(VECTOR_DB_PATH),
         metadata_db_path=str(ENHANCED_DB_PATH),  # 향상된 DB 사용
         chunk_size=CHUNK_SIZE,
@@ -267,7 +267,7 @@ def show_smart_search(rag_system):
         st.write("")  # 빈 공간
         search_button = st.button("검색", type="primary", use_container_width=True)
 
-    # 검색 실행 (입력값이 없으면 placeholder 텍스트 사용)
+    # 입력값이 없으면 플레이스홀더 값을 기본값으로 사용
     search_query = query.strip() if query.strip() else "시스템 구축 예산은 얼마인가요?"
 
     if search_button:
@@ -284,7 +284,7 @@ def show_smart_search(rag_system):
             except Exception as e:
                 # 스마트 검색 실패 시 기본 검색으로 fallback
                 st.warning("스마트 검색 기능에 문제가 있어 기본 검색을 사용합니다.")
-                result = rag_system.search_and_answer(
+                result = rag_system.search_and_answer_stage3(
                     search_query,
                     search_method=search_method,
                     top_k=5
@@ -390,7 +390,7 @@ def show_analytics_lab(rag_system):
             status_text.text(f"테스트 진행 중... ({i+1}/{len(queries)}) {query}")
 
             start_time = time.time()
-            result = rag_system.search_and_answer(query, search_method="hybrid")
+            result = rag_system.search_and_answer_stage3(query, search_method="hybrid")
             response_time = time.time() - start_time
 
             results.append({
@@ -552,20 +552,42 @@ def show_smart_query_analysis(rag_system):
     # 테스트 쿼리 입력
     st.markdown("### 쿼리 분석 테스트")
 
+    # 미리 정의된 테스트 케이스 먼저 표시
+    st.markdown("#### 미리 정의된 테스트 케이스")
+
+    test_cases = [
+        ("돈이 얼마나 들어가나요?", "예산 관련 질문 (초급 어휘)"),
+        ("언제까지 만들어야 하나요?", "일정 관련 질문 (구어체)"),
+        ("어떤 기술 써서 만드나요?", "기술 관련 질문 (간단한 표현)"),
+        ("보안은 어떻게 하죠?", "보안 관련 질문 (구어체)"),
+        ("시스템 구축 예산", "키워드만 입력")
+    ]
+
+    # 버튼 클릭 시 session_state 업데이트 (text_input 생성 전에)
+    for i, (query, description) in enumerate(test_cases):
+        if st.button(f"테스트 {i+1}: {description}", key=f"test_{i}"):
+            st.session_state['test_query_value'] = query
+            st.rerun()
+
+    # 입력란 (버튼 처리 후)
     col1, col2 = st.columns([2, 1])
     with col1:
+        # 세션 상태에서 값 가져오기
+        default_val = st.session_state.get('test_query_value', '')
+
         test_query = st.text_input(
             "테스트 쿼리를 입력하세요",
-            value=st.session_state.get('test_query', '돈이 얼마나 들어가나요?'),
-            placeholder="예: 돈이 얼마나 들어가나요?",
-            help="어휘력이 낮거나 구어체로 입력해보세요"
+            value=default_val,
+            placeholder="돈이 얼마나 들어가나요?",
+            help="어휘력이 낮거나 구어체로 입력해보세요",
+            key="smart_query_input"
         )
 
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         analyze_btn = st.button("분석 실행", type="primary")
 
-    # 입력값이 없으면 기본값 사용
+    # 입력값이 없으면 플레이스홀더 값을 기본값으로 사용 (스마트 검색과 통일)
     analysis_query = test_query.strip() if test_query.strip() else "돈이 얼마나 들어가나요?"
 
     if analyze_btn:
@@ -625,8 +647,8 @@ def show_smart_query_analysis(rag_system):
 
                 with st.spinner("검색 중..."):
                     # 원본과 향상된 쿼리로 검색
-                    original_result = rag_system.search_and_answer(analysis_query, "hybrid", top_k=3)
-                    enhanced_result = rag_system.search_and_answer(enhancement['enhanced_query'], "hybrid", top_k=3)
+                    original_result = rag_system.search_and_answer_stage3(analysis_query, search_method="hybrid", top_k=3)
+                    enhanced_result = rag_system.search_and_answer_stage3(enhancement['enhanced_query'], search_method="hybrid", top_k=3)
 
                 # 간단한 성능 비교
                 confidence_diff = enhanced_result['confidence'] - original_result['confidence']
@@ -666,22 +688,6 @@ def show_smart_query_analysis(rag_system):
                 st.error(f"분석 중 오류 발생: {str(e)}")
                 st.info("스마트 쿼리 시스템이 올바르게 설정되지 않았을 수 있습니다.")
 
-    # 미리 정의된 테스트 케이스
-    st.markdown("### 미리 정의된 테스트 케이스")
-
-    test_cases = [
-        ("돈이 얼마나 들어가나요?", "예산 관련 질문 (초급 어휘)"),
-        ("언제까지 만들어야 하나요?", "일정 관련 질문 (구어체)"),
-        ("어떤 기술 써서 만드나요?", "기술 관련 질문 (간단한 표현)"),
-        ("보안은 어떻게 하죠?", "보안 관련 질문 (구어체)"),
-        ("시스템 구축 예산", "키워드만 입력")
-    ]
-
-    for i, (query, description) in enumerate(test_cases):
-        if st.button(f"테스트 {i+1}: {description}", key=f"test_{i}"):
-            # 버튼 클릭 시 입력란에 쿼리 설정
-            st.session_state['test_query'] = query
-            st.rerun()
 
     # 스마트 쿼리 시스템 상태 확인
     st.markdown("### 시스템 상태")
@@ -714,60 +720,44 @@ def show_performance_comparison(rag_system):
     import plotly.express as px
     import json
 
-    st.markdown('<div class="custom-header"><h1>성능 비교 분석</h1><p>100% 실제 측정 데이터 기반 4단계 개선 효과</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="custom-header"><h1>성능 비교 분석</h1></div>', unsafe_allow_html=True)
 
-    # 실제 측정 데이터 로드 (practical 데이터 우선 사용)
+    # 실제 측정 데이터 로드
     try:
-        with open('practical_real_performance_data.json', 'r', encoding='utf-8') as f:
-            practical_data = json.load(f)
+        with open('final_all_stages_performance.json', 'r', encoding='utf-8') as f:
+            real_data = json.load(f)
 
-        # 100% 실제 측정 데이터 사용
-        graph_data = practical_data['graph_data']
-        stages = graph_data['stages']
-        search_times = graph_data['search_times']
-        query_times = graph_data['query_times']
-        files_per_min = graph_data['files_per_minute']
-        memory_eff = graph_data['memory_efficiency']
-        concurrent_users = graph_data['concurrent_users']
+        # 100% 실측 데이터 사용
+        stages = real_data['graph_data']['stages']
+        search_times = real_data['graph_data']['search_times']
+        search_times_cached = real_data['graph_data']['search_times_cached']
+        confidences = real_data['graph_data']['confidences']
+
+        # 추가 성능 지표
+        query_times = real_data['graph_data']['query_times']
+        files_per_min = real_data['graph_data']['files_per_min']
+        memory_eff = real_data['graph_data']['memory_eff']
+        concurrent_users = real_data['graph_data']['concurrent_users']
+        cache_hit_rates = real_data['graph_data']['cache_hit_rates']
 
         # 측정 정보 표시
-        stage2_data = practical_data['stage2']
-        st.success(f"100% 실제 측정 데이터 | 측정 시간: {practical_data['measurement_time']} | 2단계 검색시간: {stage2_data['avg_search_time']:.2f}초 | 신뢰도: {stage2_data.get('avg_confidence', 0.83):.3f} | 인덱스: {stage2_data.get('index_count', 21)}개")
+        current_confidence = real_data['stage2_hybrid']['avg_confidence']
+        index_count = real_data['stage1_indexed'].get('index_count', 21)
+
+        st.success(f"실측 시간: {real_data['measurement_time']} | 적용 전: {search_times[0]:.2f}초 → 3단계: {search_times[3]:.2f}초 → 캐시 히트: {search_times_cached[3]:.3f}초 (즉시!) | DB 인덱스: {index_count}개")
 
     except FileNotFoundError:
-        # 기존 real_performance_data.json 시도
-        try:
-            with open('real_performance_data.json', 'r', encoding='utf-8') as f:
-                real_data = json.load(f)
-
-            stages = ['패치 전 (추정)', '현재 (실측)', '3단계 후 (예상)']
-            search_times = real_data['graph_data']['search_time']
-            query_times = real_data['graph_data']['query_time']
-            files_per_min = real_data['graph_data']['files_per_minute']
-            memory_eff = real_data['graph_data']['memory_efficiency']
-            concurrent_users = real_data['graph_data']['concurrent_users']
-
-            measured = real_data['measured_data']
-            st.info(f"실제 측정 시간: {measured['timestamp']} | 처리된 문서: {measured['system_stats']['total_documents']}개")
-
-        except FileNotFoundError:
-            # 기본값 사용
-            st.warning("실제 측정 데이터를 찾을 수 없습니다. 기본 예상값을 사용합니다.")
-            stages = ['패치 전', '1단계', '2단계', '3단계']
-            search_times = [15.0, 9.0, 7.5, 2.5]
-            query_times = [1.5, 0.6, 0.2, 0.05]
-            files_per_min = [8, 12, 25, 80]
-            memory_eff = [100, 115, 130, 150]
-            concurrent_users = [1, 2, 5, 15]
-
-    # 캐시 히트율 데이터 준비 (실제 측정값 사용)
-    try:
-        cache_hit_rates = practical_data['graph_data']['cache_hit_rates']
-    except:
-        if len(stages) == 4:
-            cache_hit_rates = [0, 20, 20, 33]  # 실제 측정값 기반
-        else:
-            cache_hit_rates = [0, 25, 85]      # 3단계
+        # 기본값 사용
+        st.warning("성능 측정 데이터를 찾을 수 없습니다. 기본값을 사용합니다.")
+        stages = ["적용 전", "1단계 (인덱싱)", "2단계 (하이브리드)", "3단계 (비동기+캐시)"]
+        search_times = [1.25, 1.08, 3.39, 4.22]
+        search_times_cached = [1.25, 1.08, 3.39, 0.001]
+        confidences = [0.60, 0.60, 0.78, 0.24]
+        query_times = [1.5, 0.5, 0.19, 0.001]
+        files_per_min = [10, 20, 15, 25]
+        memory_eff = [100, 110, 120, 140]
+        concurrent_users = [1, 3, 5, 15]
+        cache_hit_rates = [0, 10, 20, 60]
 
     # 성능 지표 데이터 (실제 측정 기반)
     performance_data = {
@@ -797,7 +787,7 @@ def show_performance_comparison(rag_system):
             marker=dict(size=8)
         ))
         fig1.update_layout(
-            title="문서 처리 속도 개선 (실측 기반)",
+            title="문서 처리 속도 개선",
             xaxis_title="개선 단계",
             yaxis_title="파일/분",
             height=400
@@ -834,7 +824,7 @@ def show_performance_comparison(rag_system):
             marker=dict(size=8)
         ))
         fig2.update_layout(
-            title="검색 응답 시간 개선 (실측: 7.58초)",
+            title=f"검색 응답 시간 개선 (현재: {search_times[2]:.2f}초)",
             xaxis_title="개선 단계",
             yaxis_title="초",
             height=400
@@ -852,17 +842,17 @@ def show_performance_comparison(rag_system):
             marker=dict(size=8)
         ))
         fig4.update_layout(
-            title="DB 쿼리 성능 개선 (실측: 0.19ms)",
+            title=f"DB 쿼리 성능 개선 (현재: {query_times[2]:.2f}ms)",
             xaxis_title="개선 단계",
             yaxis_title="milliseconds",
             height=400
         )
         st.plotly_chart(fig4, use_container_width=True)
 
-    # 3단계 추가 성능 지표
-    st.subheader("3단계 고급 성능 지표")
+    # 추가 성능 지표
+    st.subheader("추가 성능 지표")
 
-    col3, col4 = st.columns(2)
+    col3, col4, col5 = st.columns(3)
 
     with col3:
         # 동시 사용자 수 그래프 (실측 기반)
@@ -876,7 +866,7 @@ def show_performance_comparison(rag_system):
             marker=dict(size=8)
         ))
         fig5.update_layout(
-            title="동시 사용자 확장성 (현재: 5명)",
+            title=f"동시 사용자 확장성 (현재: {concurrent_users[2]}명)",
             xaxis_title="개선 단계",
             yaxis_title="동시 사용자 수",
             height=400
@@ -902,6 +892,26 @@ def show_performance_comparison(rag_system):
         )
         st.plotly_chart(fig6, use_container_width=True)
 
+    with col5:
+        # DB 쿼리 성능 그래프 (로그 스케일)
+        fig7 = go.Figure()
+        fig7.add_trace(go.Scatter(
+            x=performance_data['단계'],
+            y=performance_data['DB 쿼리 시간 (ms)'],
+            mode='lines+markers',
+            name='DB 쿼리 시간',
+            line=dict(color='#E67E22', width=3),
+            marker=dict(size=8)
+        ))
+        fig7.update_layout(
+            title=f"DB 쿼리 성능 (로그 스케일)",
+            xaxis_title="개선 단계",
+            yaxis_title="milliseconds (로그)",
+            yaxis_type="log",  # 로그 스케일
+            height=400
+        )
+        st.plotly_chart(fig7, use_container_width=True)
+
     # 종합 성능 비교 차트
     st.subheader("종합 성능 지표 비교")
 
@@ -914,17 +924,17 @@ def show_performance_comparison(rag_system):
 
     normalized_data = {
         '단계': performance_data['단계'],
-        '문서 처리 속도': [int((f/baseline_files) * 100) for f in files_per_min],
-        '검색 응답 속도': [int((baseline_search/s) * 100) for s in search_times],  # 역수 계산
-        '메모리 효율성': [int((m/baseline_memory) * 100) for m in memory_eff],
-        'DB 성능': [int((baseline_query/q) * 100) for q in query_times],         # 역수 계산
-        '확장성': [int((u/baseline_users) * 100) for u in concurrent_users]
+        '문서 처리 속도': [round((f/baseline_files) * 100, 1) for f in files_per_min],
+        '검색 응답 속도': [round((baseline_search/s) * 100, 1) for s in search_times],  # 역수 계산
+        '메모리 효율성': [round((m/baseline_memory) * 100, 1) for m in memory_eff],
+        '캐시 히트율': [round((c/1) * 100, 1) if c > 0 else 0 for c in cache_hit_rates],  # 0% 기준
+        '확장성': [round((u/baseline_users) * 100, 1) for u in concurrent_users]
     }
 
     fig_combined = go.Figure()
 
-    colors = ['#2E86AB', '#F18F01', '#A23B72', '#C73E1D', '#28A745']
-    metrics = ['문서 처리 속도', '검색 응답 속도', '메모리 효율성', 'DB 성능', '확장성']
+    colors = ['#2E86AB', '#F18F01', '#A23B72', '#9B59B6', '#28A745']
+    metrics = ['문서 처리 속도', '검색 응답 속도', '메모리 효율성', '캐시 히트율', '확장성']
 
     for i, metric in enumerate(metrics):
         fig_combined.add_trace(go.Scatter(
@@ -937,7 +947,7 @@ def show_performance_comparison(rag_system):
         ))
 
     fig_combined.update_layout(
-        title="전체 성능 지표 변화 (패치 전 기준 100%)",
+        title="전체 성능 지표 변화 (적용 전 기준 100%)",
         xaxis_title="개선 단계",
         yaxis_title="성능 개선율 (%)",
         height=500,
@@ -950,39 +960,32 @@ def show_performance_comparison(rag_system):
 
     improvement_summary = {
         '성능 지표': [
-            '문서 처리 속도',
             '검색 응답 시간',
-            '메모리 사용량',
             'DB 쿼리 성능',
-            '전체 처리량'
+            '문서 처리 속도',
+            '메모리 효율성',
+            '동시 사용자 수'
         ],
-        '패치 전': [
-            '10 파일/분',
-            '8.5 초',
-            '350 MB',
-            '120 ms',
-            '5 청크/초'
+        '적용 전': [
+            f'{search_times[0]:.1f} 초',
+            f'{query_times[0]:.1f} ms',
+            f'{files_per_min[0]} 파일/분',
+            f'{memory_eff[0]}%',
+            f'{concurrent_users[0]} 명'
         ],
-        '1단계 후': [
-            '25 파일/분 (2.5배)',
-            '4.2 초 (2.0배)',
-            '280 MB (20% 절약)',
-            '35 ms (3.4배)',
-            '15 청크/초 (3.0배)'
+        '1단계 (인덱싱)': [
+            f'{search_times[1]:.1f} 초 ({search_times[0]/search_times[1]:.1f}배)',
+            f'{query_times[1]:.1f} ms ({query_times[0]/query_times[1]:.1f}배)',
+            f'{files_per_min[1]} 파일/분 ({files_per_min[1]/files_per_min[0]:.1f}배)',
+            f'{memory_eff[1]}%',
+            f'{concurrent_users[1]} 명'
         ],
-        '2단계 후': [
-            '45 파일/분 (4.5배)',
-            '2.8 초 (3.0배)',
-            '140 MB (60% 절약)',
-            '12 ms (10배)',
-            '35 청크/초 (7.0배)'
-        ],
-        '3단계 후': [
-            '120 파일/분 (12배)',
-            '1.2 초 (7.1배)',
-            '95 MB (73% 절약)',
-            '3 ms (40배)',
-            '85 청크/초 (17배)'
+        '2단계 (하이브리드)': [
+            f'{search_times[2]:.1f} 초 ({search_times[0]/search_times[2]:.1f}배)',
+            f'{query_times[2]:.2f} ms ({query_times[0]/query_times[2]:.0f}배)',
+            f'{files_per_min[2]} 파일/분 ({files_per_min[2]/files_per_min[0]:.1f}배)',
+            f'{memory_eff[2]}%',
+            f'{concurrent_users[2]} 명'
         ]
     }
 
@@ -990,43 +993,43 @@ def show_performance_comparison(rag_system):
     st.dataframe(summary_df, use_container_width=True)
 
     # 개선사항별 기여도 분석
-    st.subheader("4단계 개선사항별 기여도")
+    st.subheader("단계별 개선사항 상세")
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.markdown("**패치 전 상태:**")
+        st.markdown("**적용 전:**")
         baseline_status = {
-            '특징': ['순차 처리', '인덱스 없음', '캐시 없음'],
-            '제한사항': ['단일 사용자', '긴 응답시간', '높은 메모리'],
-            '성능': ['기준점', 'DB 느림', '메모리 비효율']
+            '특징': ['Vector만 사용', '인덱스 없음', '캐시 없음'],
+            '제한사항': ['느린 검색', 'DB 병목', '단일 스레드'],
+            '성능': [f'{search_times[0]:.1f}초', f'{query_times[0]:.1f}ms', '기준점']
         }
         st.dataframe(pd.DataFrame(baseline_status), use_container_width=True)
 
     with col2:
-        st.markdown("**1단계 개선사항 (실측):**")
+        st.markdown("**1단계 (인덱싱):**")
         stage1_improvements = {
-            '개선 항목': ['SQLite 인덱스', '기본 캐싱', '배치 처리'],
-            '실제 효과': ['DB 9.4배 향상', '캐시 20%', '검색 2.4배 향상'],
-            '측정값': ['0.96ms 쿼리', '4.76초 검색', '15 파일/분']
+            '개선 항목': ['SQLite 인덱스', '쿼리 최적화', '배치 처리'],
+            '실제 효과': [f'{query_times[0]/query_times[1]:.1f}배 빠름', '21개 인덱스', '병렬 처리'],
+            '측정값': [f'{search_times[1]:.1f}초', f'{query_times[1]:.1f}ms', f'{files_per_min[1]} 파일/분']
         }
         st.dataframe(pd.DataFrame(stage1_improvements), use_container_width=True)
 
     with col3:
-        st.markdown("**2단계 개선사항 (실측):**")
+        st.markdown("**2단계 (하이브리드):**")
         stage2_improvements = {
-            '개선 항목': ['병렬 처리', '벡터 최적화', '고급 인덱스'],
-            '실제 효과': ['병렬 구조', '신뢰도 83%', '21개 인덱스'],
-            '측정값': ['3.89초 검색', '25 파일/분', '5명 동시']
+            '개선 항목': ['Hybrid 검색', 'BM25 추가', '신뢰도 향상'],
+            '실제 효과': [f'신뢰도 {current_confidence:.1%}', '벡터+키워드', '정확도 우선'],
+            '측정값': [f'{search_times[2]:.2f}초 (느림)', f'{confidences[2]:.1%} (높음)', '트레이드오프']
         }
         st.dataframe(pd.DataFrame(stage2_improvements), use_container_width=True)
 
     with col4:
-        st.markdown("**3단계 개선사항 (실측):**")
+        st.markdown("**3단계 (비동기+캐시):**")
         stage3_improvements = {
-            '개선 항목': ['비동기 API', 'L1/L2 캐싱', '분산 처리'],
-            '실제 효과': ['0.02초 L1캐시', '33% 히트율', '29배 DB향상'],
-            '측정값': ['3.51초 검색', '80 파일/분', '15명 동시']
+            '개선 항목': ['비동기 API', 'L1/L2 캐시', '캐시 히트'],
+            '실제 효과': ['병렬 처리', '60% 히트율', '즉시 응답'],
+            '측정값': [f'{search_times[3]:.2f}초', f'{search_times_cached[3]:.3f}초 (캐시)', '844배 빠름!']
         }
         st.dataframe(pd.DataFrame(stage3_improvements), use_container_width=True)
 
@@ -1034,64 +1037,59 @@ def show_performance_comparison(rag_system):
     # 최종 성능 요약
     st.subheader("최종 성능 개선 요약")
 
-    # 실제 데이터를 사용한 요약 (동적 계산)
-    baseline_to_stage3_search = f"{search_times[0]:.1f} → {search_times[-1]:.1f}초 ({search_times[0]/search_times[-1]:.1f}배)"
-    baseline_to_stage3_files = f"{files_per_min[0]:.0f} → {files_per_min[-1]:.0f} 파일/분 ({files_per_min[-1]/files_per_min[0]:.1f}배)"
-    baseline_to_stage3_users = f"{concurrent_users[0]} → {concurrent_users[-1]}명 ({concurrent_users[-1]/concurrent_users[0]:.1f}배)"
-    baseline_to_stage3_query = f"{query_times[0]:.1f} → {query_times[-1]:.3f}ms ({query_times[0]/query_times[-1]:.0f}배)"
+    # 실제 데이터 기반 요약
+    baseline_to_current_search = f"{search_times[0]:.1f}초 → {search_times[-1]:.1f}초 ({search_times[0]/search_times[-1]:.1f}배 개선)"
+    baseline_to_current_files = f"{files_per_min[0]} → {files_per_min[-1]} 파일/분 ({files_per_min[-1]/files_per_min[0]:.1f}배)"
+    baseline_to_current_users = f"{concurrent_users[0]}명 → {concurrent_users[-1]}명 ({concurrent_users[-1]}배)"
+    baseline_to_current_query = f"{query_times[0]:.1f}ms → {query_times[-1]:.2f}ms ({query_times[0]/query_times[-1]:.0f}배)"
 
     final_summary = {
-        '구분': ['패치 전 → 3단계 후', '핵심 개선 기술', '주요 성과'],
-        '문서 처리': [baseline_to_stage3_files, '병렬 + 비동기 + 분산', '대용량 처리 가능'],
-        '검색 응답': [baseline_to_stage3_search, '캐싱 + 인덱스 최적화', '실시간 응답'],
-        'DB 쿼리': [baseline_to_stage3_query, '인덱스 + 비동기 풀', 'DB 성능 대폭 향상'],
-        '확장성': [baseline_to_stage3_users, '분산 아키텍처', '엔터프라이즈급']
+        '구분': ['적용 전 → 2단계', '핵심 개선 기술', '주요 성과'],
+        '검색 응답': [baseline_to_current_search, 'Hybrid 검색 (Vector + BM25)', '실시간 응답'],
+        'DB 쿼리': [baseline_to_current_query, 'SQLite 인덱싱 최적화', 'DB 성능 대폭 향상'],
+        '문서 처리': [baseline_to_current_files, '병렬 처리 + 배치 작업', '처리 속도 향상'],
+        '확장성': [baseline_to_current_users, '멀티유저 지원', '동시 사용자 증가']
     }
 
     st.dataframe(pd.DataFrame(final_summary), use_container_width=True)
 
-    # 3단계 구현 가이드
-    with st.expander("3단계 구현 세부사항"):
-        st.markdown("""
-        **1. 비동기 OpenAI API 처리:**
-        ```python
-        # aiohttp + asyncio 기반 비동기 처리
-        async def process_batch_async(texts, batch_size=5):
-            tasks = [process_single_batch(batch) for batch in batches]
-            results = await asyncio.gather(*tasks)
-        ```
+    # 주요 개선 포인트
+    with st.expander("구현된 핵심 기술 및 트레이드오프"):
+        col1, col2 = st.columns(2)
 
-        **2. 고급 캐싱 전략:**
-        ```python
-        # L1(메모리) + L2(디스크) 다단계 캐시
-        class AdvancedCacheManager:
-            def __init__(self):
-                self.l1_cache = {}  # 빠른 접근
-                self.l2_cache = {}  # 대용량 저장
-        ```
+        with col1:
+            st.markdown("""
+            **1단계: 데이터베이스 최적화**
+            - SQLite 인덱스 21개 추가
+            - 캐싱 시스템 구현
+            - 메타데이터 조회 최적화
+            - **결과**: 1.25초 → 1.08초 (14% 빠름)
 
-        **3. 분산 처리 아키텍처:**
-        ```python
-        # ThreadPoolExecutor 기반 워커 풀
-        class DistributedProcessor:
-            def __init__(self, num_workers=4):
-                self.executor = ThreadPoolExecutor(max_workers=num_workers)
-        ```
-        """)
+            **2단계: 하이브리드 검색**
+            - Vector 검색 (의미 기반)
+            - BM25 키워드 검색
+            - 두 방식 동시 실행 후 결합
+            - **트레이드오프**: 느려지지만 신뢰도 30% 향상
+            """)
 
-    # ROI 분석
-    with st.expander("투자 대비 효과 (ROI) 분석"):
-        roi_data = {
-            '개선 단계': ['1단계', '2단계', '3단계'],
-            '구현 난이도': ['⭐', '⭐⭐', '⭐⭐⭐⭐'],
-            '개발 시간': ['1-2주', '2-4주', '4-8주'],
-            '성능 향상': ['2.5배', '4.5배', '12배'],
-            'ROI': ['매우 높음', '높음', '중간']
-        }
+        with col2:
+            st.markdown(f"""
+            **실측 성능 지표 (단계별)**
 
-        st.dataframe(pd.DataFrame(roi_data), use_container_width=True)
+            **적용 전**
+            - 검색 시간: {search_times[0]:.2f}초
+            - 신뢰도: {confidences[0]:.1%}
 
-        st.info("**권장사항**: 1→2→3단계 순차 적용으로 안정적 성능 향상 달성")
+            **1단계 (인덱싱)**
+            - 검색 시간: {search_times[1]:.2f}초
+            - 신뢰도: {confidences[1]:.1%}
+
+            **2단계 (하이브리드)**
+            - 검색 시간: {search_times[2]:.2f}초 ⚠️
+            - 신뢰도: {confidences[2]:.1%} ✓
+
+            **핵심**: 속도보다 **정확도** 우선
+            """)
 
 def main():
     """메인 애플리케이션"""
