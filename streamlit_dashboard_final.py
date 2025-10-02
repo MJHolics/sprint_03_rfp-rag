@@ -720,8 +720,6 @@ def show_performance_comparison(rag_system):
     import plotly.express as px
     import json
 
-    st.markdown('<div class="custom-header"><h1>성능 비교 분석</h1></div>', unsafe_allow_html=True)
-
     # 실제 측정 데이터 로드
     try:
         with open('final_all_stages_performance.json', 'r', encoding='utf-8') as f:
@@ -744,7 +742,7 @@ def show_performance_comparison(rag_system):
         current_confidence = real_data['stage2_hybrid']['avg_confidence']
         index_count = real_data['stage1_indexed'].get('index_count', 21)
 
-        st.success(f"실측 시간: {real_data['measurement_time']} | 적용 전: {search_times[0]:.2f}초 → 3단계: {search_times[3]:.2f}초 → 캐시 히트: {search_times_cached[3]:.3f}초 (즉시!) | DB 인덱스: {index_count}개")
+        st.success(f"실측 시간: {real_data['measurement_time']} | 적용 전: {search_times[0]:.2f}초 → 3단계: {search_times[3]:.2f}초 → 캐시 히트: {search_times_cached[3]:.3f}초  | DB 인덱스: {index_count}개")
 
     except FileNotFoundError:
         # 기본값 사용
@@ -926,15 +924,13 @@ def show_performance_comparison(rag_system):
         '단계': performance_data['단계'],
         '문서 처리 속도': [round((f/baseline_files) * 100, 1) for f in files_per_min],
         '검색 응답 속도': [round((baseline_search/s) * 100, 1) for s in search_times],  # 역수 계산
-        '메모리 효율성': [round((m/baseline_memory) * 100, 1) for m in memory_eff],
-        '캐시 히트율': [round((c/1) * 100, 1) if c > 0 else 0 for c in cache_hit_rates],  # 0% 기준
-        '확장성': [round((u/baseline_users) * 100, 1) for u in concurrent_users]
+        '메모리 효율성': [round((m/baseline_memory) * 100, 1) for m in memory_eff]
     }
 
     fig_combined = go.Figure()
 
-    colors = ['#2E86AB', '#F18F01', '#A23B72', '#9B59B6', '#28A745']
-    metrics = ['문서 처리 속도', '검색 응답 속도', '메모리 효율성', '캐시 히트율', '확장성']
+    colors = ['#2E86AB', '#F18F01', '#A23B72']
+    metrics = ['문서 처리 속도', '검색 응답 속도', '메모리 효율성']
 
     for i, metric in enumerate(metrics):
         fig_combined.add_trace(go.Scatter(
@@ -1085,8 +1081,8 @@ def show_performance_comparison(rag_system):
             - 신뢰도: {confidences[1]:.1%}
 
             **2단계 (하이브리드)**
-            - 검색 시간: {search_times[2]:.2f}초 ⚠️
-            - 신뢰도: {confidences[2]:.1%} ✓
+            - 검색 시간: {search_times[2]:.2f}초 (주의)
+            - 신뢰도: {confidences[2]:.1%} (우수)
 
             **핵심**: 속도보다 **정확도** 우선
             """)

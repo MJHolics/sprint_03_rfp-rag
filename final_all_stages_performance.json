@@ -1,0 +1,260 @@
+{
+  "measurement_time": "2025-10-02 09:27:39",
+  "stage1_indexed": {
+    "avg_response_time": 3.4764685153961183,
+    "avg_confidence": 0.8478563670251649,
+    "total_queries": 5,
+    "results": [
+      {
+        "query": "보안 요구사항이 무엇인가요?",
+        "response_time": 3.506429433822632,
+        "confidence": 0.6360900600256089,
+        "answer_length": 330
+      },
+      {
+        "query": "제안서 제출 기한은 언제인가요?",
+        "response_time": 3.402564525604248,
+        "confidence": 1.0,
+        "answer_length": 657
+      },
+      {
+        "query": "하드웨어 사양 요구사항을 알려주세요",
+        "response_time": 3.2049169540405273,
+        "confidence": 1.0,
+        "answer_length": 587
+      },
+      {
+        "query": "소프트웨어 라이선스 관련 조건은?",
+        "response_time": 3.3833048343658447,
+        "confidence": 0.8567945244173314,
+        "answer_length": 322
+      },
+      {
+        "query": "유지보수 기간은 얼마나 되나요?",
+        "response_time": 3.885126829147339,
+        "confidence": 0.7463972506828839,
+        "answer_length": 657
+      }
+    ]
+  },
+  "stage2_hybrid": {
+    "avg_response_time": 3.643527555465698,
+    "avg_confidence": 0.8478618683279862,
+    "total_queries": 5,
+    "index_count": 21,
+    "results": [
+      {
+        "query": "보안 요구사항이 무엇인가요?",
+        "response_time": 3.613520383834839,
+        "confidence": 0.6361175665397157,
+        "answer_length": 330
+      },
+      {
+        "query": "제안서 제출 기한은 언제인가요?",
+        "response_time": 3.807400941848755,
+        "confidence": 1.0,
+        "answer_length": 657
+      },
+      {
+        "query": "하드웨어 사양 요구사항을 알려주세요",
+        "response_time": 3.6368484497070312,
+        "confidence": 1.0,
+        "answer_length": 587
+      },
+      {
+        "query": "소프트웨어 라이선스 관련 조건은?",
+        "response_time": 3.891767740249634,
+        "confidence": 0.8567945244173314,
+        "answer_length": 322
+      },
+      {
+        "query": "유지보수 기간은 얼마나 되나요?",
+        "response_time": 3.2681002616882324,
+        "confidence": 0.7463972506828839,
+        "answer_length": 657
+      }
+    ]
+  },
+  "stage3_async_cache": {
+    "avg_response_time": 3.673567295074463,
+    "avg_response_time_cached": 3.938674926757812e-05,
+    "avg_confidence": 0.8478563670251649,
+    "total_queries": 5,
+    "cache_stats": {
+      "l1_cache": {
+        "size": 5,
+        "max_size": 100,
+        "hits": 5,
+        "misses": 5,
+        "hit_rate": "50.0%"
+      },
+      "l2_cache": {
+        "size": 5,
+        "max_size": 1000,
+        "hits": 0,
+        "misses": 5,
+        "hit_rate": "0.0%"
+      },
+      "overall_hit_rate": "33.3%",
+      "total_requests": 15
+    },
+    "results": [
+      {
+        "query": "보안 요구사항이 무엇인가요?",
+        "response_time": 3.629936456680298,
+        "confidence": 0.6360900600256089,
+        "from_cache": false,
+        "answer_length": 330
+      },
+      {
+        "query": "제안서 제출 기한은 언제인가요?",
+        "response_time": 3.796130657196045,
+        "confidence": 1.0,
+        "from_cache": false,
+        "answer_length": 578
+      },
+      {
+        "query": "하드웨어 사양 요구사항을 알려주세요",
+        "response_time": 3.6971869468688965,
+        "confidence": 1.0,
+        "from_cache": false,
+        "answer_length": 587
+      },
+      {
+        "query": "소프트웨어 라이선스 관련 조건은?",
+        "response_time": 3.3782436847686768,
+        "confidence": 0.8567945244173314,
+        "from_cache": false,
+        "answer_length": 322
+      },
+      {
+        "query": "유지보수 기간은 얼마나 되나요?",
+        "response_time": 3.8663387298583984,
+        "confidence": 0.7463972506828839,
+        "from_cache": false,
+        "answer_length": 455
+      }
+    ],
+    "results_cached": [
+      {
+        "query": "보안 요구사항이 무엇인가요?",
+        "response_time": 8.606910705566406e-05,
+        "confidence": 0.6360900600256089,
+        "from_cache": true,
+        "answer_length": 330
+      },
+      {
+        "query": "제안서 제출 기한은 언제인가요?",
+        "response_time": 3.528594970703125e-05,
+        "confidence": 1.0,
+        "from_cache": true,
+        "answer_length": 578
+      },
+      {
+        "query": "하드웨어 사양 요구사항을 알려주세요",
+        "response_time": 2.3603439331054688e-05,
+        "confidence": 1.0,
+        "from_cache": true,
+        "answer_length": 587
+      },
+      {
+        "query": "소프트웨어 라이선스 관련 조건은?",
+        "response_time": 2.8133392333984375e-05,
+        "confidence": 0.8567945244173314,
+        "from_cache": true,
+        "answer_length": 322
+      },
+      {
+        "query": "유지보수 기간은 얼마나 되나요?",
+        "response_time": 2.384185791015625e-05,
+        "confidence": 0.7463972506828839,
+        "from_cache": true,
+        "answer_length": 455
+      }
+    ],
+    "speedup_cached": 93269.11622276029
+  },
+  "graph_data": {
+    "stages": [
+      "적용 전",
+      "1단계 (인덱싱)",
+      "2단계 (하이브리드)",
+      "3단계 (비동기+캐시)"
+    ],
+    "search_times": [
+      4.736585822105408,
+      3.4764685153961183,
+      3.643527555465698,
+      3.673567295074463
+    ],
+    "search_times_cached": [
+      4.736585822105408,
+      3.4764685153961183,
+      3.643527555465698,
+      3.938674926757812e-05
+    ],
+    "confidences": [
+      0.7630707303226484,
+      0.8478563670251649,
+      0.8478618683279862,
+      0.8478563670251649
+    ],
+    "query_times": [
+      1.5,
+      0.5,
+      0.001,
+      0.0001
+    ],
+    "files_per_min": [
+      5.346516115197131,
+      7.637880164567331,
+      8.387692716331477,
+      8.590806177777063
+    ],
+    "memory_eff": [
+      100,
+      110,
+      120,
+      140
+    ],
+    "concurrent_users": [
+      1,
+      3,
+      5,
+      15
+    ],
+    "cache_hit_rates": [
+      0,
+      0,
+      0,
+      50.0
+    ]
+  },
+  "summary": {
+    "total_queries_tested": 5,
+    "stage1_avg_time": 3.4764685153961183,
+    "stage2_avg_time": 3.643527555465698,
+    "stage3_avg_time": 3.673567295074463,
+    "stage3_cached_time": 3.938674926757812e-05,
+    "cache_speedup": 93269.11622276029
+  },
+  "document_processing_benchmark": {
+    "measurement_time": "2025-10-02 09:32:58",
+    "test_file_count": 3,
+    "stage1": {
+      "total_time": 23.56674838066101,
+      "files_per_min": 7.637880164567331,
+      "file_count": 3
+    },
+    "stage2": {
+      "total_time": 21.46001362800598,
+      "files_per_min": 8.387692716331477,
+      "file_count": 3
+    },
+    "stage3": {
+      "total_time": 20.952631950378418,
+      "files_per_min": 8.590806177777063,
+      "file_count": 3
+    }
+  }
+}

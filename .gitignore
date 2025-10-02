@@ -9,20 +9,26 @@
 *.sqlite3
 
 # 벡터 데이터베이스
-# vector_db/        <- 올릴 파일 때문에 주석 처리
+vector_db/
 
 # 업로드된 문서들
-# files/            <- 올릴 파일 때문에 주석 처리
-# documents/
-# data/
+files/
 
-# 성능 테스트 결과
-# performance_results/  <- 올릴 파일 때문에 주석 처리
-# results/
+# 캐시 파일
+cache_l2/
+
+# 벤치마크 및 테스트
+benchmark_*.py
+test_*.db
+fresh_vector_db/
+archive/
+
+# CSV 데이터
+*.csv
 
 # Python
-#__pycache__/
-#*.py[cod]
+__pycache__/
+*.py[cod]
 *$py.class
 *.so
 .Python
