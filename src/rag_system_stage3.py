@@ -68,11 +68,27 @@ class RAGSystemStage3(RAGSystem):
                 # 키워드 검색은 동기 (BM25)
                 search_results = self.retriever.keyword_only_search(query, k=top_k)
             else:  # hybrid
-                # Vector는 비동기, Keyword는 동기
-                vector_task = self.async_vector_store.similarity_search_async(query, k=top_k)
-                keyword_results = self.retriever.keyword_only_search(query, k=top_k)
+                # Vector와 Keyword를 완전 병렬 실행
+                import asyncio
+                from concurrent.futures import ThreadPoolExecutor
 
-                vector_results = await vector_task
+                # 비동기로 Vector 시작
+                vector_task = self.async_vector_store.similarity_search_async(query, k=top_k)
+
+                # 동기 Keyword를 별도 스레드에서 실행 (비동기 변환)
+                loop = asyncio.get_event_loop()
+                keyword_task = loop.run_in_executor(
+                    None,  # 기본 executor
+                    self.retriever.keyword_only_search,
+                    query,
+                    top_k
+                )
+
+                # 두 작업을 완전 병렬로 실행
+                vector_results, keyword_results = await asyncio.gather(
+                    vector_task,
+                    keyword_task
+                )
 
                 # 하이브리드 결합
                 search_results = self._combine_hybrid_results(
